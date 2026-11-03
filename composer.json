@@ -2,6 +2,12 @@
     "name": "pelican-provisioner/pelican-provisioner",
     "description": "Self-service server provisioning for Pelican Panel, with per-user CPU, memory, disk, and server quotas.",
     "type": "library",
+    "authors": [
+        {
+            "name": "HttpRafa",
+            "homepage": "https://github.com/HttpRafa"
+        }
+    ],
     "license": "GPL-3.0-only",
     "require": {
         "php": "^8.4 || ^8.5",

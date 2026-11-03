@@ -1,4 +1,5 @@
 #!/bin/sh
+# Seeds a local panel so the plugin can be clicked through. It is not part of a panel install.
 set -eu
 
 cd "$(dirname "$0")"

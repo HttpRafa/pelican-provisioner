@@ -25,6 +25,9 @@ use PelicanProvisioner\Services\ServerProvisioner;
 use PelicanProvisioner\Services\SettingsRepository;
 use PelicanProvisioner\Services\UsageQuery;
 
+/**
+ * Only the owner can open this page. A Wings HTTP error after the row is saved is shown as a warning, because a missing server on the node used to become an unhandled 500.
+ */
 class ServerResourcePage extends ServerFormPage
 {
     protected static string|\BackedEnum|null $navigationIcon = 'tabler-adjustments';

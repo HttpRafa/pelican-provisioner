@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace PelicanProvisioner\Domain;
 
+/**
+ * 0 on CPU, memory, or disk means unlimited. A finite quota cannot create or keep an unlimited server, and an existing 0 server consumes the whole finite quota. A server limit of null or 0 means there is no count cap.
+ */
 final class QuotaPolicy
 {
     public function assertCanCreate(Quota $quota, Usage $usage, ResourceAmounts $requested): void

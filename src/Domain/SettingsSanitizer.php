@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace PelicanProvisioner\Domain;
 
+/**
+ * Turns the settings form into environment values. A stored list that cannot be parsed is rejected, because treating it as empty would mean "allow every node, port, and egg".
+ */
 final class SettingsSanitizer
 {
     public const int LIST_LIMIT = 100;
