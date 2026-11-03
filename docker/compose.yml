@@ -1,9 +1,10 @@
-# Local Pelican panel (SQLite) and Wings, for trying the plugin in a browser.
-# Open http://127.0.0.1:8088 after `docker compose up` and the bootstrap script.
+# Local Pelican panel (SQLite) and Wings, for trying the plugin in a browser. Do not deploy this.
+# Wings gets the Docker socket and debug output is on, which is why both services only listen on loopback.
+# Start it with ./bootstrap.sh from this directory, then open http://127.0.0.1:8088.
 
 services:
   panel:
-    image: ghcr.io/pelican/panel:latest
+    image: ghcr.io/pelican/panel:v1.0.0-rc.2
     restart: unless-stopped
     networks:
       - pelican
@@ -46,7 +47,7 @@ services:
       start_period: 120s
 
   wings:
-    image: ghcr.io/pelican/wings:latest
+    image: ghcr.io/pelican/wings:v1.0.0-rc.1
     restart: unless-stopped
     networks:
       - pelican
@@ -66,11 +67,11 @@ services:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - ./wings/etc:/etc/pelican
-      - ./wings/etc:/mnt/hdd/development/php/pelican-provisioner/docker/wings/etc
+      - "./wings/etc:${PWD:?run this from the docker directory}/wings/etc"
       - wings-data:/var/lib/pelican
-      - ./wings/volumes:/mnt/hdd/development/php/pelican-provisioner/docker/wings/volumes
+      - "./wings/volumes:${PWD:?run this from the docker directory}/wings/volumes"
       - wings-logs:/var/log/pelican
-      - ./wings/tmp:/mnt/hdd/development/php/pelican-provisioner/docker/wings/tmp
+      - "./wings/tmp:${PWD:?run this from the docker directory}/wings/tmp"
     depends_on:
       panel:
         condition: service_healthy

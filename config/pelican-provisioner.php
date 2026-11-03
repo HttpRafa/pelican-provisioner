@@ -12,4 +12,5 @@ return [
     'deployment_tags' => env('PROVISIONER_DEPLOYMENT_TAGS', 'user_creatable_servers'),
     'deployment_ports' => env('PROVISIONER_DEPLOYMENT_PORTS', ''),
     'allowed_eggs' => env('PROVISIONER_ALLOWED_EGGS', ''),
+    'allow_all_eggs' => env('PROVISIONER_ALLOW_ALL_EGGS', 'false'),
 ];

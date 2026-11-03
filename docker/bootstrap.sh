@@ -4,6 +4,9 @@ set -eu
 
 cd "$(dirname "$0")"
 
+admin_password="$(head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
+friend_password="$(head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
+
 echo "Starting the panel..."
 docker compose up -d panel
 
@@ -21,8 +24,8 @@ done
 
 echo "Seeding and creating accounts..."
 docker compose exec -T panel php artisan db:seed --force
-docker compose exec -T panel php artisan p:user:make --email=admin@example.com --username=admin --password=pelican-admin --admin=1
-docker compose exec -T panel php artisan p:user:make --email=friend@example.com --username=friend --password=pelican-friend
+docker compose exec -T panel php artisan p:user:make --email=admin@example.com --username=admin --password="$admin_password" --admin=1
+docker compose exec -T panel php artisan p:user:make --email=friend@example.com --username=friend --password="$friend_password"
 
 echo "Installing the plugin..."
 # The panel writes install state into plugin.json. The bind mount is owned by the host user.
@@ -87,6 +90,12 @@ if (App\Models\Egg::query()->doesntExist()) {
         echo "EGG={$url}\n";
     }
 }
+
+$egg = App\Models\Egg::query()->orderBy('id')->first();
+
+if ($egg) {
+    Illuminate\Support\Env::writeVariables(['PROVISIONER_ALLOWED_EGGS' => (string) $egg->id], app()->environmentFilePath(), true);
+}
 PHP
 )"
 
@@ -102,6 +111,6 @@ docker compose up -d wings
 
 echo
 echo "Panel:  http://127.0.0.1:8088"
-echo "Admin:  admin@example.com / pelican-admin"
-echo "Friend: friend@example.com / pelican-friend"
+echo "Admin:  admin@example.com / $admin_password"
+echo "Friend: friend@example.com / $friend_password"
 echo "The friend account has a quota, so the create-server page is available after login."

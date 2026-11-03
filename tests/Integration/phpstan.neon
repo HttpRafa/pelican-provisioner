@@ -1,0 +1,16 @@
+# Runs inside the panel container, so the analysis sees the real panel classes. composer check covers src/Domain at a stricter level.
+parameters:
+    level: 2
+    tmpDir: /tmp/phpstan
+    paths:
+        - /var/www/html/plugins/pelican-provisioner/src
+    bootstrapFiles:
+        - /var/www/html/vendor/autoload.php
+    ignoreErrors:
+        # Laravel forwards these through __call and __callStatic. Seeing through that takes Larastan, which cannot share the panel's vendor tree here.
+        -
+            message: '#^Call to an undefined method Illuminate\\Database\\Query\\Builder::with\(\)\.$#'
+            path: /var/www/html/plugins/pelican-provisioner/src/Filament/Admin/Resources/ResourceQuotas/ResourceQuotaResource.php
+        -
+            message: '#^Call to an undefined static method App\\Facades\\Activity::event\(\)\.$#'
+            path: /var/www/html/plugins/pelican-provisioner/src/Services/ServerProvisioner.php

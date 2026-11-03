@@ -6,7 +6,9 @@ namespace PelicanProvisioner\Filament\Admin\Resources\ResourceQuotas;
 
 use App\Enums\CustomizationKey;
 use App\Filament\Admin\Resources\Users\Pages\EditUser;
+use App\Models\Role;
 use App\Models\User;
+use Closure;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -96,15 +98,19 @@ class ResourceQuotaResource extends Resource
                         }
 
                         $like = addcslashes($search, '\\%_').'%';
+                        $withEmail = self::canSeeEmails();
 
-                        $query->whereHas('user', function (Builder $user) use ($like): void {
-                            $user->where(function (Builder $nested) use ($like): void {
-                                $nested->where('username', 'like', $like)
-                                    ->orWhere('email', 'like', $like);
+                        $query->whereHas('user', function (Builder $user) use ($like, $withEmail): void {
+                            $user->where(function (Builder $nested) use ($like, $withEmail): void {
+                                $nested->where('username', 'like', $like);
+
+                                if ($withEmail) {
+                                    $nested->orWhere('email', 'like', $like);
+                                }
                             });
                         });
                     })
-                    ->url(fn (ResourceQuota $quota): ?string => $quota->user !== null && auth()->user()?->can('update', $quota->user)
+                    ->url(fn (ResourceQuota $quota): ?string => $quota->user !== null && user()?->can('update', $quota->user)
                         ? EditUser::getUrl(['record' => $quota->user])
                         : null),
                 TextColumn::make('cpu')
@@ -163,11 +169,20 @@ class ResourceQuotaResource extends Resource
                             ->relationship(
                                 name: 'user',
                                 titleAttribute: 'username',
-                                modifyQueryUsing: fn (Builder $query): Builder => $query->select(['id', 'username', 'email'])->orderBy('username'),
+                                modifyQueryUsing: fn (Builder $query): Builder => self::selectableUsers($query)->select(['id', 'username', 'email'])->orderBy('username'),
                             )
-                            ->searchable(['username', 'email'])
+                            ->searchable(self::canSeeEmails() ? ['username', 'email'] : ['username'])
                             ->searchDebounce(300)
-                            ->getOptionLabelFromRecordUsing(fn (User $user): string => $user->username.' ('.$user->email.')')
+                            ->getOptionLabelFromRecordUsing(fn (User $user): string => self::canSeeEmails() ? $user->username.' ('.$user->email.')' : (string) $user->username)
+                            ->rules([
+                                fn (): Closure => function (string $attribute, mixed $value, Closure $fail): void {
+                                    $target = User::query()->find($value);
+
+                                    if (!$target instanceof User || !user()?->canTarget($target)) {
+                                        $fail(trans('pelican-provisioner::strings.admin.cannot_target'));
+                                    }
+                                },
+                            ])
                             ->unique(table: 'provisioner_quotas', column: 'user_id')
                             ->dehydrated(fn (?ResourceQuota $record): bool => $record === null)
                             ->disabled(fn (?ResourceQuota $record): bool => $record !== null)
@@ -179,9 +194,9 @@ class ResourceQuotaResource extends Resource
                             ->label(trans('pelican-provisioner::strings.server_limit'))
                             ->helperText(trans('pelican-provisioner::strings.hint_server_limit'))
                             ->integer()
+                            ->required()
                             ->minValue(0)
-                            ->maxValue(ResourceAmounts::ABSOLUTE_MAX)
-                            ->nullable(),
+                            ->maxValue(ResourceAmounts::ABSOLUTE_MAX),
                         TextEntry::make('current_usage')
                             ->label(trans('pelican-provisioner::strings.admin.usage_heading'))
                             ->visible(fn (?ResourceQuota $record): bool => $record !== null)
@@ -233,6 +248,21 @@ class ResourceQuotaResource extends Resource
         ];
     }
 
+    /** The rest of the panel does not let normal admins target root admins, so they cannot hand them a quota either. */
+    public static function selectableUsers(Builder $query): Builder
+    {
+        if (user()?->isRootAdmin()) {
+            return $query;
+        }
+
+        return $query->whereDoesntHave('roles', fn (Builder $roles): Builder => $roles->where('name', Role::ROOT_ADMIN));
+    }
+
+    public static function canSeeEmails(): bool
+    {
+        return user()?->can('viewList user') ?? false;
+    }
+
     private static function quotaField(string $name, string $suffix): TextInput
     {
         return TextInput::make($name)
@@ -242,7 +272,6 @@ class ResourceQuotaResource extends Resource
             ->integer()
             ->minValue(0)
             ->maxValue(ResourceAmounts::ABSOLUTE_MAX)
-            ->default(0)
             ->suffix($suffix);
     }
 

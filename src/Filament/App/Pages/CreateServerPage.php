@@ -28,6 +28,7 @@ use Filament\Schemas\Schema;
 use Filament\Support\Facades\FilamentView;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\HtmlString;
+use PelicanProvisioner\Domain\PositiveId;
 use PelicanProvisioner\Domain\ProvisioningException;
 use PelicanProvisioner\Domain\QuotaPolicy;
 use PelicanProvisioner\Domain\ResourceAmounts;
@@ -40,7 +41,7 @@ use PelicanProvisioner\Services\UsageQuery;
 use Throwable;
 
 /**
- * $data has to be a public Livewire property or the wizard submits empty fields. The create button is type=button with wire:click because the wizard action is not inside a form, so a submit button does not call save.
+ * $data has to be a public Livewire property or the wizard submits empty fields. The create button is type=button with wire:click because the wizard action is not inside a form, so a submit button does not call save. Because the client can change anything in $data, a startup row keeps only its variable name there. Its label, rules, and whether it can be edited come from the database.
  *
  * @property Schema $form
  */
@@ -65,6 +66,9 @@ class CreateServerPage extends Page
 
     /** @var array<int, string|null> */
     private array $eggDescriptions = [];
+
+    /** @var array<int, array<string, EggVariable>> */
+    private array $trustedVariableCache = [];
 
     public function getTitle(): string
     {
@@ -173,13 +177,15 @@ class CreateServerPage extends Page
                                 ->default([])
                                 ->schema([
                                     Hidden::make('env_variable'),
-                                    Hidden::make('user_editable'),
-                                    Hidden::make('user_viewable'),
-                                    Hidden::make('rules'),
-                                    Hidden::make('name'),
-                                    Hidden::make('description'),
-                                    Hidden::make('default_value'),
-                                    StartupVariable::make('variable_value')->fromForm(),
+                                    StartupVariable::make('variable_value')
+                                        ->variableName(fn (Get $get): ?string => $this->trustedVariable($get)?->name)
+                                        ->variableDesc(fn (Get $get): ?string => $this->trustedVariable($get)?->description)
+                                        ->variableEnv(fn (Get $get): ?string => $this->trustedVariable($get)?->env_variable)
+                                        ->variableDefault(fn (Get $get): ?string => $this->trustedVariable($get)?->default_value)
+                                        ->variableRules(fn (Get $get): array => $this->trustedVariable($get)?->rules ?? [])
+                                        ->disabled(fn (Get $get): bool => !$this->trustedVariable($get)?->user_editable)
+                                        // The field's number cast turns what was typed into a float, which cannot hold a long ID exactly.
+                                        ->dehydrateStateUsing(fn (StartupVariable $component): mixed => $component->getRawState()),
                                 ]),
                         ]),
                 ])
@@ -313,7 +319,7 @@ class CreateServerPage extends Page
 
         $settings = app(SettingsRepository::class)->current();
 
-        if (!$settings->createUsable) {
+        if (!$settings->createUsable || (!$settings->allowAllEggs && $settings->allowedEggIds === [])) {
             $this->eggOptionCache = [];
 
             return;
@@ -321,7 +327,7 @@ class CreateServerPage extends Page
 
         $query = Egg::query()->orderBy('name');
 
-        if ($settings->allowedEggIds !== []) {
+        if (!$settings->allowAllEggs) {
             $query->whereIn('id', $settings->allowedEggIds);
         }
 
@@ -336,25 +342,40 @@ class CreateServerPage extends Page
         $this->eggOptionCache = $options;
     }
 
-    /** @return list<array<string, mixed>> */
+    /** @return list<array{env_variable: string, variable_value: string|null}> */
     private function variableState(mixed $eggId): array
     {
-        if (!is_numeric($eggId)) {
+        return array_values(array_map(
+            fn (EggVariable $variable): array => [
+                'env_variable' => $variable->env_variable,
+                'variable_value' => $variable->default_value,
+            ],
+            $this->trustedVariables($eggId),
+        ));
+    }
+
+    private function trustedVariable(Get $get): ?EggVariable
+    {
+        $name = $get('env_variable');
+
+        return is_string($name) ? ($this->trustedVariables($get('../../egg_id'))[$name] ?? null) : null;
+    }
+
+    /** @return array<string, EggVariable> The variables this user may see, for an egg this user may choose. */
+    private function trustedVariables(mixed $eggId): array
+    {
+        $id = PositiveId::parse($eggId);
+
+        if ($id === null || !array_key_exists($id, $this->eggOptions())) {
             return [];
         }
 
-        return EggVariable::query()
-            ->where('egg_id', (int) $eggId)
+        return $this->trustedVariableCache[$id] ??= EggVariable::query()
+            ->where('egg_id', $id)
             ->where('user_viewable', true)
             ->orderBy('sort')
             ->get(['id', 'egg_id', 'name', 'description', 'env_variable', 'default_value', 'user_viewable', 'user_editable', 'rules', 'sort'])
-            ->map(function (EggVariable $variable): array {
-                $row = $variable->toArray();
-                $row['variable_value'] = $variable->default_value;
-
-                return $row;
-            })
-            ->values()
+            ->keyBy('env_variable')
             ->all();
     }
 

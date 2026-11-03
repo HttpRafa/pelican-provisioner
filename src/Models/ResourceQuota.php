@@ -13,6 +13,15 @@ use Illuminate\Support\Facades\Cache;
 use PelicanProvisioner\Domain\Quota;
 use Throwable;
 
+/**
+ * @property int $id
+ * @property int $user_id
+ * @property int $cpu
+ * @property int $memory
+ * @property int $disk
+ * @property int|null $server_limit
+ * @property User|null $user
+ */
 class ResourceQuota extends Model
 {
     public const string COUNT_CACHE_KEY = 'pelican-provisioner:quota-count';

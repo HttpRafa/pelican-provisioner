@@ -72,6 +72,34 @@ it('lets an owner turn their unlimited server into a finite one that fits', func
     ))->not->toThrow(QuotaViolationException::class);
 });
 
+it('lets an owner who is over quota shrink but not grow', function () {
+    $quota = new Quota(100, 1024, 1024, null);
+    $current = new ResourceAmounts(90, 512, 512);
+    $usage = Usage::fromServers([$current, $current, $current]);
+
+    expect(fn () => quotaPolicy()->assertCanUpdate($quota, $usage, $current, new ResourceAmounts(10, 512, 256)))->not->toThrow(QuotaViolationException::class)
+        ->and(fn () => quotaPolicy()->assertCanUpdate($quota, $usage, $current, new ResourceAmounts(91, 512, 512)))->toThrow(QuotaViolationException::class);
+});
+
+it('does not treat a resize to unlimited as shrinking', function () {
+    $current = new ResourceAmounts(90, 512, 512);
+
+    expect(fn () => quotaPolicy()->assertCanUpdate(
+        new Quota(100, 1024, 1024, null),
+        Usage::fromServers([$current]),
+        $current,
+        new ResourceAmounts(0, 512, 512),
+    ))->toThrow(QuotaViolationException::class);
+});
+
+it('measures only the growth of a resize', function () {
+    $growth = (new ResourceAmounts(150, 100, 512))->growthFrom(new ResourceAmounts(100, 200, 512));
+
+    expect($growth)->toEqual(new ResourceAmounts(50, 0, 0))
+        ->and($growth->isZero())->toBeFalse()
+        ->and((new ResourceAmounts(1, 1, 1))->growthFrom(new ResourceAmounts(2, 2, 2))->isZero())->toBeTrue();
+});
+
 it('enforces the server count and treats zero as no cap', function () {
     expect(fn () => quotaPolicy()->assertCanCreate(
         new Quota(0, 0, 0, 1),

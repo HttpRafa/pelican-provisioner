@@ -9,6 +9,8 @@ final class SubmittedVariables
     public const int MAX_ROWS = 100;
 
     /**
+     * A row without a value is a locked field the form did not submit, so the egg default applies.
+     *
      * @return array<string, mixed>
      */
     public static function fromRepeater(mixed $rows): array
@@ -38,7 +40,11 @@ final class SubmittedVariables
                 continue;
             }
 
-            $submitted[$name] = $row['variable_value'] ?? null;
+            if (!array_key_exists('variable_value', $row)) {
+                continue;
+            }
+
+            $submitted[$name] = $row['variable_value'];
         }
 
         return $submitted;

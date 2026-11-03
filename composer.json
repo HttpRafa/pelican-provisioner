@@ -34,6 +34,7 @@
     },
     "scripts": {
         "analyse": "@php vendor/bin/phpstan analyse --memory-limit=1G",
+        "build": "@php scripts/build-zip.php",
         "check": [
             "@php vendor/bin/pint --test",
             "@analyse",

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace PelicanProvisioner\Domain;
 
 /**
- * 0 on CPU, memory, or disk means unlimited. A finite quota cannot create or keep an unlimited server, and an existing 0 server consumes the whole finite quota. A server limit of null or 0 means there is no count cap.
+ * 0 on CPU, memory, or disk means unlimited. A finite quota cannot create or keep an unlimited server, and an existing 0 server consumes the whole finite quota. A server limit of null or 0 means there is no count cap. Keeping or reducing a finite size is always allowed, so an owner who is over quota can still shrink a server.
  */
 final class QuotaPolicy
 {
@@ -21,9 +21,9 @@ final class QuotaPolicy
     {
         $baseline = $usage->without($current);
 
-        $this->assertResource($quota->cpu, $baseline->cpu, $baseline->unlimitedCpuServers, $requested->cpu, QuotaResource::Cpu);
-        $this->assertResource($quota->memory, $baseline->memory, $baseline->unlimitedMemoryServers, $requested->memory, QuotaResource::Memory);
-        $this->assertResource($quota->disk, $baseline->disk, $baseline->unlimitedDiskServers, $requested->disk, QuotaResource::Disk);
+        $this->assertResize($quota->cpu, $baseline->cpu, $baseline->unlimitedCpuServers, $current->cpu, $requested->cpu, QuotaResource::Cpu);
+        $this->assertResize($quota->memory, $baseline->memory, $baseline->unlimitedMemoryServers, $current->memory, $requested->memory, QuotaResource::Memory);
+        $this->assertResize($quota->disk, $baseline->disk, $baseline->unlimitedDiskServers, $current->disk, $requested->disk, QuotaResource::Disk);
     }
 
     public function assertWithin(Quota $quota, Usage $usage): void
@@ -70,6 +70,15 @@ final class QuotaPolicy
         if ($cap !== null && ($usage->servers < 0 || $usage->servers >= $cap)) {
             throw new QuotaViolationException(QuotaResource::Servers);
         }
+    }
+
+    private function assertResize(int $limit, int $used, int $unlimitedServers, int $current, int $requested, QuotaResource $resource): void
+    {
+        if ($current > 0 && $requested > 0 && $requested <= $current) {
+            return;
+        }
+
+        $this->assertResource($limit, $used, $unlimitedServers, $requested, $resource);
     }
 
     private function assertResource(int $limit, int $used, int $unlimitedServers, int $requested, QuotaResource $resource): void
