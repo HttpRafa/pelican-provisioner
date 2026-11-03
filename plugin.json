@@ -1,0 +1,18 @@
+{
+    "id": "pelican-provisioner",
+    "name": "Pelican Provisioner",
+    "author": "Pelican Provisioner",
+    "version": "1.0.0",
+    "description": "Let users create their own servers inside administrator-defined CPU, memory, disk, and server quotas.",
+    "category": "plugin",
+    "namespace": "PelicanProvisioner",
+    "class": "PelicanProvisionerPlugin",
+    "panels": null,
+    "panel_version": null,
+    "api_version": 1,
+    "composer_packages": null,
+    "meta": {
+        "status": "enabled",
+        "status_message": null
+    }
+}

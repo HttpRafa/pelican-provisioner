@@ -1,0 +1,10 @@
+/vendor
+/.phpunit.cache
+.phpunit.result.cache
+.phpstan.cache
+/docker/wings/etc/*
+!/docker/wings/etc/.gitkeep
+/docker/wings/volumes/*
+!/docker/wings/volumes/.gitkeep
+/docker/wings/tmp/*
+!/docker/wings/tmp/.gitkeep

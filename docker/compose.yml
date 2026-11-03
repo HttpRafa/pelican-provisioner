@@ -1,0 +1,87 @@
+# Local Pelican panel (SQLite) and Wings, for trying the plugin in a browser.
+# Open http://127.0.0.1:8088 after `docker compose up` and the bootstrap script.
+
+services:
+  panel:
+    image: ghcr.io/pelican/panel:latest
+    restart: unless-stopped
+    networks:
+      - pelican
+    ports:
+      - "127.0.0.1:8088:80"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - pelican-data:/pelican-data
+      - pelican-logs:/var/www/html/storage/logs
+      - type: volume
+        source: pelican-data
+        target: /var/www/html/plugins
+        volume:
+          subpath: plugins
+      - type: bind
+        source: ..
+        target: /var/www/html/plugins/pelican-provisioner
+        read_only: false
+    environment:
+      XDG_DATA_HOME: /pelican-data
+      APP_URL: http://127.0.0.1:8088
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_INSTALLED: "true"
+      ADMIN_EMAIL: admin@example.com
+      BEHIND_PROXY: "true"
+      DB_CONNECTION: sqlite
+      CACHE_STORE: file
+      SESSION_DRIVER: file
+      SESSION_SECURE_COOKIE: "false"
+      QUEUE_CONNECTION: database
+      MAIL_MAILER: log
+      MAIL_DRIVER: log
+    healthcheck:
+      test: ["CMD", "/bin/ash", "/healthcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+
+  wings:
+    image: ghcr.io/pelican/wings:latest
+    restart: unless-stopped
+    networks:
+      - pelican
+      - wings0
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:2022:2022"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      TZ: UTC
+      WINGS_UID: "988"
+      WINGS_GID: "988"
+      WINGS_USERNAME: pelican
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - ./wings/etc:/etc/pelican
+      - ./wings/etc:/mnt/hdd/development/php/pelican-provisioner/docker/wings/etc
+      - wings-data:/var/lib/pelican
+      - ./wings/volumes:/mnt/hdd/development/php/pelican-provisioner/docker/wings/volumes
+      - wings-logs:/var/log/pelican
+      - ./wings/tmp:/mnt/hdd/development/php/pelican-provisioner/docker/wings/tmp
+    depends_on:
+      panel:
+        condition: service_healthy
+
+volumes:
+  pelican-data:
+  pelican-logs:
+  wings-data:
+  wings-logs:
+  wings-tmp:
+
+networks:
+  pelican:
+  wings0:
