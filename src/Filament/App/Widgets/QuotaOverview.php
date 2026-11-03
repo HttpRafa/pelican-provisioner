@@ -32,7 +32,7 @@ class QuotaOverview extends StatsOverviewWidget
         $usage = app(UsageQuery::class)->forOwner((int) $actor->id);
         $policy = app(QuotaPolicy::class);
         $domain = $quota->toQuota();
-        $suffix = config('panel.use_binary_prefix') ? 'MiB' : 'MB';
+        $suffix = config('panel.use_binary_prefix') ? ' MiB' : ' MB';
 
         return [
             $this->stat(trans('pelican-provisioner::strings.cpu'), $usage->cpu, $domain->cpu, '%', $policy->maximum($domain->cpu, $usage->cpu, $usage->unlimitedCpuServers)),
@@ -51,11 +51,12 @@ class QuotaOverview extends StatsOverviewWidget
 
     private function stat(string $label, int $used, int $limit, string $suffix, ?int $remaining): Stat
     {
-        $limitLabel = $limit > 0 ? $limit.$suffix : '∞';
-        $stat = Stat::make($label, $used.$suffix.' / '.$limitLabel)
+        $unit = $suffix === '' ? '' : ($suffix === '%' ? '%' : $suffix);
+        $limitLabel = $limit > 0 ? $limit.$unit : '∞';
+        $stat = Stat::make($label, $used.$unit.' / '.$limitLabel)
             ->description($remaining === null
                 ? trans('pelican-provisioner::strings.unlimited')
-                : trans('pelican-provisioner::strings.widget.remaining', ['amount' => $remaining.$suffix]));
+                : trans('pelican-provisioner::strings.widget.remaining', ['amount' => $remaining.$unit]));
 
         if ($limit <= 0 || $remaining === null) {
             return $stat->color('primary');

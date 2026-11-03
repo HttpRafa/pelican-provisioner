@@ -14,6 +14,7 @@ use Filament\Notifications\Notification;
 use Filament\Schemas\Schema;
 use Filament\Support\Facades\FilamentView;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use PelicanProvisioner\Domain\ProvisioningException;
 use PelicanProvisioner\Domain\QuotaPolicy;
 use PelicanProvisioner\Domain\ResourceAmounts;
@@ -153,7 +154,7 @@ class ServerResourcePage extends ServerFormPage
                 ->send();
 
             return;
-        } catch (ConnectionException) {
+        } catch (ConnectionException|RequestException) {
             Notification::make()
                 ->title(trans('pelican-provisioner::strings.notifications.server_resources_updated'))
                 ->body(trans('pelican-provisioner::strings.notifications.manual_restart_needed'))

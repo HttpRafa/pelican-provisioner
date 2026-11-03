@@ -8,7 +8,11 @@
     "namespace": "PelicanProvisioner",
     "class": "PelicanProvisionerPlugin",
     "panels": null,
-    "panel_version": "^1.0.0",
+    "panel_version": null,
     "api_version": 1,
-    "composer_packages": null
+    "composer_packages": null,
+    "meta": {
+        "status": "enabled",
+        "status_message": null
+    }
 }

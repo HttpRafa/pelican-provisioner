@@ -151,7 +151,8 @@ class ResourceQuotaResource extends Resource
     {
         return $schema
             ->components([
-                Section::make(trans('pelican-provisioner::strings.user_resource_limits'))
+                Section::make(trans_choice('pelican-provisioner::strings.user_resource_limits', 1))
+                    ->columnSpanFull()
                     ->columns(2)
                     ->schema([
                         Select::make('user_id')

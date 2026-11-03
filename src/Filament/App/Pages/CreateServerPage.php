@@ -55,6 +55,9 @@ class CreateServerPage extends Page
 
     protected string $view = 'filament.server.pages.server-form-page';
 
+    /** @var array<string, mixed>|null */
+    public ?array $data = [];
+
     /** @var array<int|string, string>|null */
     private ?array $eggOptionCache = null;
 
@@ -180,7 +183,7 @@ class CreateServerPage extends Page
                 ])
                     ->columnSpanFull()
                     ->submitAction(new HtmlString(
-                        '<button type="submit" class="fi-btn fi-btn-size-md fi-color-primary">'.e(trans('pelican-provisioner::strings.create_server')).'</button>',
+                        '<button type="button" wire:click="save" wire:loading.attr="disabled" class="fi-btn fi-btn-size-md fi-color-primary">'.e(trans('pelican-provisioner::strings.create_server')).'</button>',
                     )),
             ]);
     }

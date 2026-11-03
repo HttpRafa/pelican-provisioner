@@ -20,6 +20,23 @@ The admin quota list is paginated and does not count every row on each page. Use
 
 Settings are rejected instead of written when they contain line breaks, invalid ports, or a corrupt list that would otherwise fall back to "allow everything". The string `false` stays false.
 
+## Local panel
+
+`docker/compose.yml` runs the panel on SQLite and Wings beside it. From `docker/`:
+
+```bash
+docker compose up -d
+```
+
+The panel is at [http://127.0.0.1:8088](http://127.0.0.1:8088).
+
+| Account | Password | What you see |
+| --- | --- | --- |
+| `admin@example.com` | `pelican-admin` | Admin area, including Quotas |
+| `friend@example.com` | `pelican-friend` | Server list with Create server |
+
+`docker/bootstrap.sh` repeats the seed, accounts, plugin install, sample quota, node, and one egg. The plugin directory is mounted into the container, so the panel can write its install state into `plugin.json`.
+
 ## Development
 
 PHP 8.4 or 8.5, Composer, Laravel Pint, Pest, and PHPStan with Larastan:

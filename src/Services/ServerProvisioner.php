@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace PelicanProvisioner\Services;
 
+use App\Enums\PluginStatus;
 use App\Exceptions\Service\Deployment\NoViableAllocationException;
 use App\Exceptions\Service\Deployment\NoViableNodeException;
 use App\Facades\Activity;
 use App\Models\Egg;
 use App\Models\EggVariable;
 use App\Models\Objects\DeploymentObject;
+use App\Models\Plugin;
 use App\Models\Server;
 use App\Models\User;
 use App\Repositories\Daemon\DaemonServerRepository;
@@ -18,6 +20,7 @@ use App\Services\Servers\ServerDeletionService;
 use App\Services\Servers\VariableValidatorService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -151,7 +154,7 @@ final class ServerProvisioner
 
         try {
             app(DaemonServerRepository::class)->setServer($server)->sync();
-        } catch (ConnectionException $exception) {
+        } catch (ConnectionException|RequestException $exception) {
             Log::warning('pelican-provisioner.sync_failed', [
                 'server_id' => $server->id,
                 'user_id' => $actor->id,
@@ -329,9 +332,13 @@ final class ServerProvisioner
 
     private function subdomainsEnabled(): bool
     {
-        $status = DB::table('plugins')->where('id', 'subdomains')->value('status');
+        try {
+            $plugin = Plugin::query()->find('subdomains', ['id', 'status']);
+        } catch (Throwable) {
+            return false;
+        }
 
-        return $status === 'enabled';
+        return $plugin instanceof Plugin && $plugin->status === PluginStatus::Enabled;
     }
 
     private function hasSubdomainColumn(): bool
