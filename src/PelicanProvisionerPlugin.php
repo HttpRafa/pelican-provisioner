@@ -19,9 +19,10 @@ use Filament\Panel;
 use Filament\Schemas\Components\Section;
 use PelicanProvisioner\Domain\InvalidSettingsException;
 use PelicanProvisioner\Domain\SettingsSanitizer;
+use Throwable;
 
 /**
- * Settings are written to the environment and then reported with a notification. saveSettings must not throw: the panel's settings action swallows the exception and the admin would see a successful save.
+ * Settings are written to the environment and then reported with a notification. saveSettings must not throw: the panel swallows the exception, so the admin would never learn that nothing was saved.
  */
 class PelicanProvisionerPlugin implements HasPluginSettings, Plugin
 {
@@ -68,6 +69,7 @@ class PelicanProvisionerPlugin implements HasPluginSettings, Plugin
             'can_users_delete_servers' => $settings->usersCanDelete,
             'deployment_tags' => $sanitizer->displayList($config['deployment_tags'] ?? ''),
             'deployment_ports' => $sanitizer->displayList($config['deployment_ports'] ?? ''),
+            'allow_all_eggs' => $settings->allowAllEggs,
             'allowed_eggs' => $settings->allowedEggIds,
         ];
     }
@@ -112,6 +114,11 @@ class PelicanProvisionerPlugin implements HasPluginSettings, Plugin
                         ->helperText(trans('pelican-provisioner::strings.settings.ports_help'))
                         ->splitKeys(['Tab', ','])
                         ->columnSpanFull(),
+                    Toggle::make('allow_all_eggs')
+                        ->label(trans('pelican-provisioner::strings.settings.allow_all_eggs'))
+                        ->helperText(trans('pelican-provisioner::strings.settings.allow_all_eggs_help'))
+                        ->inline(false)
+                        ->columnSpanFull(),
                     Select::make('allowed_eggs')
                         ->label(trans('pelican-provisioner::strings.settings.eggs'))
                         ->helperText(trans('pelican-provisioner::strings.settings.eggs_help'))
@@ -137,6 +144,17 @@ class PelicanProvisionerPlugin implements HasPluginSettings, Plugin
             Notification::make()
                 ->title(trans('pelican-provisioner::strings.notifications.settings_invalid'))
                 ->body(trans('pelican-provisioner::strings.notifications.settings_not_written'))
+                ->danger()
+                ->persistent()
+                ->send();
+
+            return;
+        } catch (Throwable $exception) {
+            report($exception);
+
+            Notification::make()
+                ->title(trans('pelican-provisioner::strings.notifications.settings_invalid'))
+                ->body(trans('pelican-provisioner::strings.notifications.settings_write_failed'))
                 ->danger()
                 ->persistent()
                 ->send();

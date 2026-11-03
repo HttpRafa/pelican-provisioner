@@ -22,10 +22,11 @@ final readonly class DeploymentSettings
         public array $tags,
         public array $ports,
         public array $allowedEggIds,
+        public bool $allowAllEggs,
     ) {}
 
     public static function blocked(): self
     {
-        return new self(false, 0, 0, 0, 0, false, false, [], [], []);
+        return new self(false, 0, 0, 0, 0, false, false, [], [], [], false);
     }
 }

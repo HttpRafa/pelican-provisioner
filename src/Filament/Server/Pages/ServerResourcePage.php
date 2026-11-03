@@ -26,7 +26,7 @@ use PelicanProvisioner\Services\SettingsRepository;
 use PelicanProvisioner\Services\UsageQuery;
 
 /**
- * Only the owner can open this page. A Wings HTTP error after the row is saved is shown as a warning, because a missing server on the node used to become an unhandled 500.
+ * Only the owner can open this page. A Wings HTTP error after the row is saved is shown as a warning, because a missing server on the node used to become an unhandled 500. The form is filled with the three fields it edits, because the parent would send the whole server row to the browser.
  */
 class ServerResourcePage extends ServerFormPage
 {
@@ -76,6 +76,17 @@ class ServerResourcePage extends ServerFormPage
                 $this->resourceField('memory', $this->memorySuffix()),
                 $this->resourceField('disk', $this->memorySuffix()),
             ]);
+    }
+
+    protected function fillForm(): void
+    {
+        $server = $this->getRecord();
+
+        $this->form->fill([
+            'cpu' => $server->cpu,
+            'memory' => $server->memory,
+            'disk' => $server->disk,
+        ]);
     }
 
     protected function getHeaderWidgets(): array
@@ -151,7 +162,7 @@ class ServerResourcePage extends ServerFormPage
                 ->send();
         } catch (ProvisioningException $exception) {
             Notification::make()
-                ->title(trans('pelican-provisioner::strings.notifications.server_resources_updated'))
+                ->title(trans('pelican-provisioner::strings.notifications.server_resources_not_updated'))
                 ->body(trans('pelican-provisioner::strings.notifications.'.$exception->failure->value))
                 ->danger()
                 ->send();
@@ -229,7 +240,14 @@ class ServerResourcePage extends ServerFormPage
             return ['min' => 0, 'max' => ResourceAmounts::ABSOLUTE_MAX];
         }
 
-        return ['min' => 1, 'max' => $maximum];
+        $current = match ($resource) {
+            'cpu' => (int) $server->cpu,
+            'memory' => (int) $server->memory,
+            default => (int) $server->disk,
+        };
+
+        // Keeping or reducing the current size stays possible when the quota is already spent.
+        return ['min' => 1, 'max' => max($maximum, $current)];
     }
 
     private function memorySuffix(): string

@@ -6,15 +6,17 @@ namespace PelicanProvisioner\Services;
 
 use App\Enums\PluginStatus;
 use App\Exceptions\Service\Deployment\NoViableAllocationException;
-use App\Exceptions\Service\Deployment\NoViableNodeException;
 use App\Facades\Activity;
+use App\Models\Allocation;
 use App\Models\Egg;
 use App\Models\EggVariable;
-use App\Models\Objects\DeploymentObject;
+use App\Models\Node;
 use App\Models\Plugin;
 use App\Models\Server;
 use App\Models\User;
 use App\Repositories\Daemon\DaemonServerRepository;
+use App\Services\Deployment\AllocationSelectionService;
+use App\Services\Deployment\FindViableNodesService;
 use App\Services\Servers\ServerCreationService;
 use App\Services\Servers\ServerDeletionService;
 use App\Services\Servers\VariableValidatorService;
@@ -49,13 +51,15 @@ use Throwable;
 /**
  * Creates, resizes, and deletes a server for the signed-in user.
  *
- * The egg allowlist and the quota are checked here, not only in the form. One lock per user stops two requests from both passing the quota. After create, the quota is read again and the new server is deleted if it no longer fits. Subdomain support is read from the panel's plugin list, because this panel version has no plugins table.
+ * The egg allowlist and the quota are checked here, not only in the form. One lock per user stops two requests from both passing the quota. After create, the quota is read again and the new server is deleted if it no longer fits. The allocation is chosen here because the panel's deployment path creates a server without one when no ports are set. Subdomain support is read from the panel's plugin list, because this panel version has no plugins table.
  */
 final class ServerProvisioner
 {
     private const int CREATE_ATTEMPTS = 10;
 
-    private const int CREATE_DECAY_SECONDS = 600;
+    private const int CHANGE_ATTEMPTS = 30;
+
+    private const int DECAY_SECONDS = 600;
 
     private ?bool $subdomainColumn = null;
 
@@ -63,6 +67,8 @@ final class ServerProvisioner
         private readonly ServerCreationService $creation,
         private readonly ServerDeletionService $deletion,
         private readonly VariableValidatorService $validator,
+        private readonly FindViableNodesService $nodes,
+        private readonly AllocationSelectionService $allocations,
         private readonly UsageQuery $usage,
         private readonly UserLock $lock,
         private readonly SettingsRepository $settings,
@@ -77,7 +83,7 @@ final class ServerProvisioner
         $actor = $this->actor();
 
         try {
-            $this->hitRateLimit((int) $actor->id);
+            $this->hitRateLimit($actor, 'create', self::CREATE_ATTEMPTS);
 
             return $this->lock->run((int) $actor->id, fn (): Server => $this->createWhileLocked(
                 $actor,
@@ -100,48 +106,52 @@ final class ServerProvisioner
     public function updateResources(Server $server, mixed $cpu, mixed $memory, mixed $disk): void
     {
         $actor = $this->actor();
-        $this->assertOwner($actor, $server);
+        $this->assertOwner($actor, $server, 'resize');
 
         $settings = $this->settings->current();
 
         if (!$settings->usersCanUpdate) {
-            abort(403);
+            $this->deny($actor, $server, 'resize', 'disabled');
         }
 
         try {
-            $this->lock->run((int) $actor->id, function () use ($server, $cpu, $memory, $disk): void {
-                DB::transaction(function () use ($server, $cpu, $memory, $disk): void {
-                    $locked = Server::query()->whereKey($server->id)->lockForUpdate()->first();
+            $this->hitRateLimit($actor, 'change', self::CHANGE_ATTEMPTS);
 
-                    if (!$locked instanceof Server) {
-                        abort(404);
-                    }
+            $before = $this->lock->run((int) $actor->id, fn (): ResourceAmounts => DB::transaction(function () use ($server, $cpu, $memory, $disk): ResourceAmounts {
+                /** @var Server|null $locked */
+                $locked = Server::query()->whereKey($server->id)->lockForUpdate()->first();
 
-                    $actor = $this->actor();
-                    $this->assertOwner($actor, $locked);
+                if (!$locked instanceof Server) {
+                    abort(404);
+                }
 
-                    if ($locked->isInConflictState()) {
-                        abort(403);
-                    }
+                $actor = $this->actor();
+                $this->assertOwner($actor, $locked, 'resize');
 
-                    $quota = $this->quotaForUpdate((int) $actor->id);
-                    $requested = $this->amounts($cpu, $memory, $disk);
-                    $current = new ResourceAmounts((int) $locked->cpu, (int) $locked->memory, (int) $locked->disk);
+                if ($locked->isInConflictState()) {
+                    $this->deny($actor, $locked, 'resize', 'conflict_state');
+                }
 
-                    $this->policy->assertCanUpdate(
-                        $quota->toQuota(),
-                        $this->usage->fresh((int) $actor->id),
-                        $current,
-                        $requested,
-                    );
+                $quota = $this->quotaForUpdate($actor, $locked);
+                $requested = $this->amounts($cpu, $memory, $disk);
+                $current = new ResourceAmounts((int) $locked->cpu, (int) $locked->memory, (int) $locked->disk);
 
-                    $locked->forceFill([
-                        'cpu' => $requested->cpu,
-                        'memory' => $requested->memory,
-                        'disk' => $requested->disk,
-                    ])->save();
-                });
-            });
+                $this->policy->assertCanUpdate(
+                    $quota->toQuota(),
+                    $this->usage->fresh((int) $actor->id),
+                    $current,
+                    $requested,
+                );
+                $this->assertNodeHasRoom($locked, $requested->growthFrom($current));
+
+                $locked->forceFill([
+                    'cpu' => $requested->cpu,
+                    'memory' => $requested->memory,
+                    'disk' => $requested->disk,
+                ])->save();
+
+                return $current;
+            }));
         } catch (QuotaViolationException) {
             throw new ProvisioningException(ProvisioningFailure::Quota);
         } catch (InvalidResourceAmountException) {
@@ -154,8 +164,16 @@ final class ServerProvisioner
             throw new ProvisioningException(ProvisioningFailure::Unknown);
         }
 
+        $this->usage->forget((int) $actor->id);
         $server->refresh();
-        $this->audit($server, 'server:provisioner.resources');
+        $this->audit($server, 'server:provisioner.resources', [
+            'old_cpu' => $before->cpu,
+            'old_memory' => $before->memory,
+            'old_disk' => $before->disk,
+            'new_cpu' => (int) $server->cpu,
+            'new_memory' => (int) $server->memory,
+            'new_disk' => (int) $server->disk,
+        ]);
 
         try {
             app(DaemonServerRepository::class)->setServer($server)->sync();
@@ -172,13 +190,23 @@ final class ServerProvisioner
     public function delete(Server $server): void
     {
         $actor = $this->actor();
-        $this->assertOwner($actor, $server);
+        $this->assertOwner($actor, $server, 'delete');
 
         if (!$this->settings->current()->usersCanDelete) {
-            abort(403);
+            $this->deny($actor, $server, 'delete', 'disabled');
         }
 
+        $properties = [
+            'name' => (string) $server->name,
+            'uuid' => (string) $server->uuid,
+            'cpu' => (int) $server->cpu,
+            'memory' => (int) $server->memory,
+            'disk' => (int) $server->disk,
+        ];
+
         try {
+            $this->hitRateLimit($actor, 'change', self::CHANGE_ATTEMPTS);
+
             $this->lock->run((int) $actor->id, function () use ($server, $actor): void {
                 $locked = Server::query()->whereKey($server->id)->first();
 
@@ -186,7 +214,16 @@ final class ServerProvisioner
                     abort(404);
                 }
 
-                $this->assertOwner($actor, $locked);
+                $this->assertOwner($actor, $locked, 'delete');
+
+                if ($locked->isInConflictState()) {
+                    $this->deny($actor, $locked, 'delete', 'conflict_state');
+                }
+
+                if ($this->readQuota((int) $actor->id) === null) {
+                    $this->deny($actor, $locked, 'delete', 'no_quota');
+                }
+
                 $this->deletion->handle($locked);
                 $this->usage->forget((int) $actor->id);
             });
@@ -198,7 +235,7 @@ final class ServerProvisioner
             throw new ProvisioningException(ProvisioningFailure::Unknown);
         }
 
-        $this->audit($server, 'server:provisioner.delete');
+        $this->audit($server, 'server:provisioner.delete', $properties);
     }
 
     private function createWhileLocked(User $actor, mixed $name, mixed $eggId, mixed $cpu, mixed $memory, mixed $disk, mixed $variables): Server
@@ -220,16 +257,17 @@ final class ServerProvisioner
 
         $resolvedEggId = PositiveId::parse($eggId);
 
-        if ($resolvedEggId === null || !$this->eggs->permits($resolvedEggId, $settings->allowedEggIds)) {
+        if ($resolvedEggId === null || !$this->eggs->permits($resolvedEggId, $settings->allowedEggIds, $settings->allowAllEggs)) {
+            $this->logDenied($actor, null, 'create', 'egg_not_allowed');
+
             throw new ProvisioningException(ProvisioningFailure::EggNotAllowed);
         }
 
-        $quota = ResourceQuota::query()
-            ->where('user_id', $actor->id)
-            ->useWritePdo()
-            ->first(['id', 'user_id', 'cpu', 'memory', 'disk', 'server_limit']);
+        $quota = $this->readQuota((int) $actor->id);
 
         if (!$quota instanceof ResourceQuota) {
+            $this->logDenied($actor, null, 'create', 'no_quota');
+
             throw new ProvisioningException(ProvisioningFailure::Forbidden);
         }
 
@@ -270,16 +308,15 @@ final class ServerProvisioner
             throw new ProvisioningException(ProvisioningFailure::Variables, $detail);
         }
 
-        $deployment = (new DeploymentObject())
-            ->setDedicated(false)
-            ->setTags($settings->tags)
-            ->setPorts($settings->ports);
+        $allocation = $this->chooseAllocation($requested, $settings);
 
         try {
             $server = $this->creation->handle([
                 'name' => $serverName,
                 'owner_id' => $actor->id,
                 'egg_id' => $egg->id,
+                'node_id' => $allocation->node_id,
+                'allocation_id' => $allocation->id,
                 'cpu' => $requested->cpu,
                 'memory' => $requested->memory,
                 'disk' => $requested->disk,
@@ -292,20 +329,33 @@ final class ServerProvisioner
                 'database_limit' => $settings->databaseLimit,
                 'allocation_limit' => $settings->allocationLimit,
                 'backup_limit' => $settings->backupLimit,
-            ], $deployment);
-        } catch (NoViableNodeException) {
-            throw new ProvisioningException(ProvisioningFailure::NoNode);
-        } catch (NoViableAllocationException) {
-            throw new ProvisioningException(ProvisioningFailure::NoAllocation);
+            ]);
         } catch (ValidationException $exception) {
+            if (array_key_exists('allocation_id', $exception->errors())) {
+                throw new ProvisioningException(ProvisioningFailure::NoAllocation);
+            }
+
             throw new ProvisioningException(ProvisioningFailure::Variables, $this->validationDetail($exception));
         } catch (ModelNotFoundException) {
             throw new ProvisioningException(ProvisioningFailure::EggNotAllowed);
+        } catch (RequestException $exception) {
+            $this->removeUnfinishedServer((int) $actor->id, (int) $allocation->id);
+
+            report($exception);
+
+            throw new ProvisioningException(ProvisioningFailure::Unknown);
+        }
+
+        $latest = $this->readQuota((int) $actor->id);
+
+        if (!$latest instanceof ResourceQuota) {
+            $this->deletion->withForce()->handle($server);
+
+            throw new ProvisioningException(ProvisioningFailure::Forbidden);
         }
 
         try {
-            $quota->refresh();
-            $this->policy->assertWithin($quota->toQuota(), $this->usage->fresh((int) $actor->id));
+            $this->policy->assertWithin($latest->toQuota(), $this->usage->fresh((int) $actor->id));
         } catch (QuotaViolationException) {
             $this->deletion->withForce()->handle($server);
 
@@ -313,7 +363,12 @@ final class ServerProvisioner
         }
 
         $this->applySubdomainLimit($server, $settings);
-        $this->audit($server, 'server:provisioner.create');
+        $this->audit($server, 'server:provisioner.create', [
+            'egg_id' => (int) $egg->id,
+            'cpu' => $requested->cpu,
+            'memory' => $requested->memory,
+            'disk' => $requested->disk,
+        ]);
 
         Log::info('pelican-provisioner.created', [
             'server_id' => $server->id,
@@ -324,15 +379,73 @@ final class ServerProvisioner
         return $server;
     }
 
-    private function applySubdomainLimit(Server $server, DeploymentSettings $settings): void
+    private function chooseAllocation(ResourceAmounts $requested, DeploymentSettings $settings): Allocation
     {
-        if (!$this->subdomainsEnabled() || !$this->hasSubdomainColumn()) {
+        $nodeIds = $this->nodes
+            ->handle($requested->memory, $requested->disk, $requested->cpu, $settings->tags)
+            ->pluck('id')
+            ->all();
+
+        if ($nodeIds === []) {
+            throw new ProvisioningException(ProvisioningFailure::NoNode);
+        }
+
+        try {
+            return $this->allocations
+                ->setDedicated(false)
+                ->setNodes($nodeIds)
+                ->setPorts($settings->ports)
+                ->handle();
+        } catch (NoViableAllocationException) {
+            throw new ProvisioningException(ProvisioningFailure::NoAllocation);
+        }
+    }
+
+    /**
+     * The panel only cleans up after a ConnectionException. An HTTP error from the node would leave a row that stays "installing", counts against the quota, and cannot be opened by its owner.
+     */
+    private function removeUnfinishedServer(int $ownerId, int $allocationId): void
+    {
+        $server = Server::query()
+            ->where('owner_id', $ownerId)
+            ->where('allocation_id', $allocationId)
+            ->first();
+
+        if ($server instanceof Server) {
+            $this->deletion->withForce()->handle($server);
+        }
+    }
+
+    private function assertNodeHasRoom(Server $server, ResourceAmounts $growth): void
+    {
+        if ($growth->isZero()) {
             return;
         }
 
-        $server->forceFill([
-            'subdomain_limit' => $settings->subdomainLimit,
-        ])->save();
+        /** @var Node|null $node */
+        $node = Node::query()->whereKey($server->node_id)->lockForUpdate()->first();
+
+        if (!$node instanceof Node || !$node->isViable($growth->memory, $growth->disk, $growth->cpu)) {
+            throw new ProvisioningException(ProvisioningFailure::NodeFull);
+        }
+    }
+
+    /**
+     * The server already exists and the column default of 0 is the safe value, so a failure here must not report the create as failed.
+     */
+    private function applySubdomainLimit(Server $server, DeploymentSettings $settings): void
+    {
+        try {
+            if (!$this->subdomainsEnabled() || !$this->hasSubdomainColumn()) {
+                return;
+            }
+
+            $server->forceFill([
+                'subdomain_limit' => $settings->subdomainLimit,
+            ])->save();
+        } catch (Throwable $exception) {
+            report($exception);
+        }
     }
 
     private function subdomainsEnabled(): bool
@@ -351,15 +464,24 @@ final class ServerProvisioner
         return $this->subdomainColumn ??= Schema::hasColumn('servers', 'subdomain_limit');
     }
 
-    private function quotaForUpdate(int $userId): ResourceQuota
+    private function readQuota(int $userId): ?ResourceQuota
     {
-        $quota = ResourceQuota::query()
+        return ResourceQuota::query()
             ->where('user_id', $userId)
+            ->useWritePdo()
+            ->first(['id', 'user_id', 'cpu', 'memory', 'disk', 'server_limit']);
+    }
+
+    private function quotaForUpdate(User $actor, Server $server): ResourceQuota
+    {
+        /** @var ResourceQuota|null $quota */
+        $quota = ResourceQuota::query()
+            ->where('user_id', $actor->id)
             ->lockForUpdate()
             ->first(['id', 'user_id', 'cpu', 'memory', 'disk', 'server_limit']);
 
         if (!$quota instanceof ResourceQuota) {
-            abort(403);
+            $this->deny($actor, $server, 'resize', 'no_quota');
         }
 
         return $quota;
@@ -385,22 +507,41 @@ final class ServerProvisioner
         return $actor;
     }
 
-    private function assertOwner(User $actor, Server $server): void
+    private function assertOwner(User $actor, Server $server, string $action): void
     {
         if ((int) $actor->id !== (int) $server->owner_id) {
-            abort(403);
+            $this->deny($actor, $server, $action, 'not_owner');
         }
     }
 
-    private function hitRateLimit(int $userId): void
+    private function deny(User $actor, Server $server, string $action, string $reason): never
     {
-        $key = 'pelican-provisioner:create:'.$userId;
+        $this->logDenied($actor, $server, $action, $reason);
 
-        if (RateLimiter::tooManyAttempts($key, self::CREATE_ATTEMPTS)) {
-            throw new ProvisioningException(ProvisioningFailure::Busy);
+        abort(403);
+    }
+
+    private function logDenied(User $actor, ?Server $server, string $action, string $reason): void
+    {
+        Log::warning('pelican-provisioner.denied', [
+            'user_id' => $actor->id,
+            'server_id' => $server?->id,
+            'action' => $action,
+            'reason' => $reason,
+        ]);
+    }
+
+    private function hitRateLimit(User $actor, string $action, int $attempts): void
+    {
+        $key = 'pelican-provisioner:'.$action.':'.$actor->id;
+
+        if (RateLimiter::tooManyAttempts($key, $attempts)) {
+            $this->logDenied($actor, null, $action, 'rate_limited');
+
+            throw new ProvisioningException(ProvisioningFailure::RateLimited);
         }
 
-        RateLimiter::hit($key, self::CREATE_DECAY_SECONDS);
+        RateLimiter::hit($key, self::DECAY_SECONDS);
     }
 
     private function validationDetail(ValidationException $exception): string
@@ -425,14 +566,15 @@ final class ServerProvisioner
         return $text;
     }
 
-    private function audit(Server $server, string $event): void
+    /** @param array<string, int|string> $properties */
+    private function audit(Server $server, string $event, array $properties): void
     {
         if (!class_exists(Activity::class)) {
             return;
         }
 
         try {
-            Activity::event($event)->subject($server)->log();
+            Activity::event($event)->subject($server)->property($properties)->log();
         } catch (Throwable $exception) {
             report($exception);
         }

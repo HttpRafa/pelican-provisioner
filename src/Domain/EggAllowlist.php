@@ -6,14 +6,14 @@ namespace PelicanProvisioner\Domain;
 
 final class EggAllowlist
 {
-    /** @param list<int> $allowedEggIds Empty means every egg, matching the saved setting. */
-    public function permits(int $eggId, array $allowedEggIds): bool
+    /** @param list<int> $allowedEggIds An empty list allows nothing. Every egg is only available through the explicit $allowAll setting. */
+    public function permits(int $eggId, array $allowedEggIds, bool $allowAll): bool
     {
         if ($eggId <= 0) {
             return false;
         }
 
-        if ($allowedEggIds === []) {
+        if ($allowAll) {
             return true;
         }
 

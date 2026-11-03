@@ -13,4 +13,18 @@ final readonly class ResourceAmounts
         public int $memory,
         public int $disk,
     ) {}
+
+    public function growthFrom(self $current): self
+    {
+        return new self(
+            max(0, $this->cpu - $current->cpu),
+            max(0, $this->memory - $current->memory),
+            max(0, $this->disk - $current->disk),
+        );
+    }
+
+    public function isZero(): bool
+    {
+        return $this->cpu === 0 && $this->memory === 0 && $this->disk === 0;
+    }
 }

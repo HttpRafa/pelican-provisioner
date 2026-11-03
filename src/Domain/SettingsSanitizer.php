@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace PelicanProvisioner\Domain;
 
 /**
- * Turns the settings form into environment values. A stored list that cannot be parsed is rejected, because treating it as empty would mean "allow every node, port, and egg".
+ * Turns the settings form into environment values. A stored list that cannot be parsed is rejected, because treating it as empty would mean "allow every node and port". An empty egg list allows nothing, so allowing every egg takes its own explicit setting.
  */
 final class SettingsSanitizer
 {
@@ -36,6 +36,7 @@ final class SettingsSanitizer
             : $this->natural($stored['subdomain_limit'] ?? '0');
         $update = $this->bool($input['can_users_update_servers'] ?? null);
         $delete = $this->bool($input['can_users_delete_servers'] ?? null);
+        $allowAll = $this->bool($input['allow_all_eggs'] ?? null);
         $tags = $this->tags($input['deployment_tags'] ?? []);
         $ports = $this->ports($input['deployment_ports'] ?? []);
         $eggs = $this->eggs($input['allowed_eggs'] ?? []);
@@ -64,6 +65,10 @@ final class SettingsSanitizer
             $errors['can_users_delete_servers'] = 'invalid';
         }
 
+        if ($allowAll === null) {
+            $errors['allow_all_eggs'] = 'invalid';
+        }
+
         if ($tags === null) {
             $errors['deployment_tags'] = 'invalid';
         } elseif ($tags === [] && $this->tags($stored['deployment_tags'] ?? '') === null) {
@@ -78,8 +83,6 @@ final class SettingsSanitizer
 
         if ($eggs === null) {
             $errors['allowed_eggs'] = 'invalid';
-        } elseif ($eggs === [] && $this->eggs($stored['allowed_eggs'] ?? '') === null) {
-            $errors['allowed_eggs'] = 'repair';
         }
 
         if (
@@ -90,6 +93,7 @@ final class SettingsSanitizer
             || $subdomain === null
             || $update === null
             || $delete === null
+            || $allowAll === null
             || $tags === null
             || $ports === null
             || $eggs === null
@@ -107,6 +111,7 @@ final class SettingsSanitizer
             'PROVISIONER_DEPLOYMENT_TAGS' => implode(',', $tags),
             'PROVISIONER_DEPLOYMENT_PORTS' => implode(',', $ports),
             'PROVISIONER_ALLOWED_EGGS' => implode(',', $eggs),
+            'PROVISIONER_ALLOW_ALL_EGGS' => $allowAll ? 'true' : 'false',
         ];
     }
 
@@ -119,6 +124,7 @@ final class SettingsSanitizer
         $subdomain = $this->natural($config['subdomain_limit'] ?? null);
         $update = $this->bool($config['can_users_update_servers'] ?? null);
         $delete = $this->bool($config['can_users_delete_servers'] ?? null);
+        $allowAll = $this->bool($config['allow_all_eggs'] ?? null);
         $tags = $this->tags($config['deployment_tags'] ?? null);
         $ports = $this->ports($config['deployment_ports'] ?? null);
         $eggs = $this->eggs($config['allowed_eggs'] ?? null);
@@ -129,6 +135,7 @@ final class SettingsSanitizer
             && $subdomain !== null
             && $update !== null
             && $delete !== null
+            && $allowAll !== null
             && $tags !== null
             && $ports !== null
             && $eggs !== null;
@@ -144,6 +151,7 @@ final class SettingsSanitizer
             tags: $tags ?? [],
             ports: $ports ?? [],
             allowedEggIds: $eggs ?? [],
+            allowAllEggs: $allowAll ?? false,
         );
     }
 
@@ -201,7 +209,11 @@ final class SettingsSanitizer
         return filter_var(trim($value), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
     }
 
-    /** @return list<string>|null */
+    /**
+     * A tag is written to the environment file inside double quotes, where ${NAME} is expanded on load. Allowing $ would let the settings form show other values from that file.
+     *
+     * @return list<string>|null
+     */
     public function tags(mixed $value): ?array
     {
         $items = $this->items($value);
@@ -211,7 +223,7 @@ final class SettingsSanitizer
         }
 
         foreach ($items as $tag) {
-            if (strlen($tag) > self::TAG_LENGTH || preg_match('/[\x00-\x1F,\x7F"\\\\]/', $tag) === 1) {
+            if (strlen($tag) > self::TAG_LENGTH || preg_match('/[\x00-\x1F,\x7F"\\\\$]/', $tag) === 1) {
                 return null;
             }
         }
@@ -286,10 +298,6 @@ final class SettingsSanitizer
     /** @return list<string>|null */
     private function items(mixed $value): ?array
     {
-        if ($value === null) {
-            return [];
-        }
-
         if (is_string($value)) {
             if (strpbrk($value, "\r\n\0") !== false) {
                 return null;
@@ -320,6 +328,11 @@ final class SettingsSanitizer
             }
 
             $items[] = $item;
+        }
+
+        // Entries that all trim to nothing are corruption, not an intentionally empty list.
+        if ($items === [] && $value !== []) {
+            return null;
         }
 
         return $items;
