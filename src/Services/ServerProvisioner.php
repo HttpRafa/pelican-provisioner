@@ -46,6 +46,11 @@ use PelicanProvisioner\Models\ResourceQuota;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Throwable;
 
+/**
+ * Creates, resizes, and deletes a server for the signed-in user.
+ *
+ * The egg allowlist and the quota are checked here, not only in the form. One lock per user stops two requests from both passing the quota. After create, the quota is read again and the new server is deleted if it no longer fits. Subdomain support is read from the panel's plugin list, because this panel version has no plugins table.
+ */
 final class ServerProvisioner
 {
     private const int CREATE_ATTEMPTS = 10;

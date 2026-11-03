@@ -152,6 +152,7 @@ class ResourceQuotaResource extends Resource
         return $schema
             ->components([
                 Section::make(trans_choice('pelican-provisioner::strings.user_resource_limits', 1))
+                    // The modal schema is two columns. Without a full span the card sits in the left half and the right half is empty. trans_choice picks "Quota"; trans() would print the raw "Quota|Quotas" string.
                     ->columnSpanFull()
                     ->columns(2)
                     ->schema([

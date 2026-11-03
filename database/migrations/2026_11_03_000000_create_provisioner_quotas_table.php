@@ -4,6 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
+// Own table on purpose. Altering servers would rewrite every server row on a large panel.
 return new class extends Migration
 {
     public function up(): void

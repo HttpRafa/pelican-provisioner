@@ -20,6 +20,9 @@ use Filament\Schemas\Components\Section;
 use PelicanProvisioner\Domain\InvalidSettingsException;
 use PelicanProvisioner\Domain\SettingsSanitizer;
 
+/**
+ * Settings are written to the environment and then reported with a notification. saveSettings must not throw: the panel's settings action swallows the exception and the admin would see a successful save.
+ */
 class PelicanProvisionerPlugin implements HasPluginSettings, Plugin
 {
     use EnvironmentWriterTrait;

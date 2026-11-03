@@ -20,6 +20,9 @@ use PelicanProvisioner\Policies\ResourceQuotaPolicy;
 use PelicanProvisioner\Services\QuotaAccess;
 use PelicanProvisioner\Services\UsageQuery;
 
+/**
+ * Usage and access are scoped so Octane does not keep them for the next request. The policy is registered here because the panel does not discover plugin policies on its own.
+ */
 class PelicanProvisionerServiceProvider extends ServiceProvider
 {
     public function register(): void

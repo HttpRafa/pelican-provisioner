@@ -8,6 +8,9 @@ use Illuminate\Support\Facades\DB;
 use PelicanProvisioner\Domain\Usage;
 use PelicanProvisioner\Domain\UsageFactory;
 
+/**
+ * One aggregate on servers.owner_id per user. Registered scoped, not singleton, so a long-lived worker cannot reuse another request's numbers.
+ */
 final class UsageQuery
 {
     /** @var array<int, Usage> */

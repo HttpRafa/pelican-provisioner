@@ -1,5 +1,7 @@
 <?php
 
+// Stored as raw strings. Casting env('false') with (bool) is true in PHP, which would turn the delete switch on.
+
 return [
     'database_limit' => env('PROVISIONER_DATABASE_LIMIT', '0'),
     'allocation_limit' => env('PROVISIONER_ALLOCATION_LIMIT', '0'),

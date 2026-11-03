@@ -12,6 +12,9 @@ use PelicanProvisioner\Domain\ProvisioningFailure;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Throwable;
 
+/**
+ * One lock per user so two creates cannot both pass the quota. MySQL and MariaDB use GET_LOCK, which survives across Octane workers. Other databases use the cache lock.
+ */
 final class UserLock
 {
     public function __construct(

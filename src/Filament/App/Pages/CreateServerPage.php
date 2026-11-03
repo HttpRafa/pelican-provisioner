@@ -40,6 +40,8 @@ use PelicanProvisioner\Services\UsageQuery;
 use Throwable;
 
 /**
+ * $data has to be a public Livewire property or the wizard submits empty fields. The create button is type=button with wire:click because the wizard action is not inside a form, so a submit button does not call save.
+ *
  * @property Schema $form
  */
 class CreateServerPage extends Page

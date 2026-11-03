@@ -2,11 +2,26 @@
 
 Users with a quota can create, resize, and optionally delete their own servers. CPU, memory, disk, and server count stay inside the limits an administrator sets. Subusers cannot spend or change someone else's quota.
 
-The folder installed in the panel must be named `pelican-provisioner`. That name is the plugin id.
+Author: [HttpRafa](https://github.com/HttpRafa). Version 0.1.0. It loads on Pelican 1.0.0-rc.2 and later 1.x releases. The caret starts at the release candidate because PHP treats `1.0.0-rc.2` as older than `1.0.0`, so a requirement of `^1.0.0` would refuse the panel this plugin was built against.
+
+The folder installed in the panel must be named `pelican-provisioner`. That name is the plugin id. `plugin.json` lists the admin, app, and server panels because those are the only panels this code registers with. It does not ask the panel to install extra Composer packages. `meta.status` stays `not_installed` in git so a fresh copy is not treated as already installed. The panel writes that block when you install or enable it.
+
+Coming from the official user-creatable-servers plugin: [MIGRATE.md](MIGRATE.md).
 
 ## Install
 
-Copy this directory to `plugins/pelican-provisioner` inside the panel, then install it from the plugin list or with `php artisan p:plugin:install`. Tag the public nodes that should receive these servers with `user_creatable_servers`, or change the tag in the plugin settings. Create a quota for each user who should be able to provision a server. Root administrators can do that immediately. Other administrator roles need the new Quota permissions.
+Import `dist/pelican-provisioner-0.1.0.zip` from the plugin list, or copy this directory to `plugins/pelican-provisioner` inside the panel. Then install it from the plugin list or with `php artisan p:plugin:install`. Rebuild the zip from a git checkout with:
+
+```bash
+mkdir -p dist
+rm -rf dist/stage && mkdir -p dist/stage/pelican-provisioner
+cp plugin.json composer.json LICENSE README.md MIGRATE.md dist/stage/pelican-provisioner/
+cp -a src config database lang dist/stage/pelican-provisioner/
+(cd dist/stage && zip -r ../pelican-provisioner-0.1.0.zip pelican-provisioner)
+rm -rf dist/stage
+```
+
+The archive is a build product and is not committed. It contains the files the panel loads, not the test suite or the local Wings stack. Tag the public nodes that should receive these servers with `user_creatable_servers`, or change the tag in the plugin settings. Create a quota for each user who should be able to provision a server. Root administrators can do that immediately. Other administrator roles need the new Quota permissions.
 
 Leave the egg allowlist empty only if every egg on the panel is safe for those users. Eggs with privileged install scripts should be left off the list unless you intend to allow them. An empty port list uses any free allocation. An empty node-tag list uses every public node.
 
