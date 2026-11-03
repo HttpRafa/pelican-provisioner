@@ -1,0 +1,34 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml
+
+  release:
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: "8.5"
+          coverage: none
+          extensions: zip
+      - name: Refuse a tag that does not match plugin.json
+        run: test "$GITHUB_REF_NAME" = "v$(jq -r .version plugin.json)"
+      - run: php scripts/build-zip.php
+      - run: gh release create "$GITHUB_REF_NAME" dist/*.zip --generate-notes --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}
