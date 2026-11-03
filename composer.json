@@ -1,0 +1,48 @@
+{
+    "name": "pelican-provisioner/pelican-provisioner",
+    "description": "Self-service server provisioning for Pelican Panel, with per-user CPU, memory, disk, and server quotas.",
+    "type": "library",
+    "license": "GPL-3.0-only",
+    "require": {
+        "php": "^8.4 || ^8.5",
+        "ext-ctype": "*",
+        "ext-mbstring": "*",
+        "ext-pdo": "*"
+    },
+    "require-dev": {
+        "larastan/larastan": "^3.10",
+        "laravel/pint": "^1.30",
+        "orchestra/testbench": "^11.3",
+        "pestphp/pest": "^4.7",
+        "phpstan/phpstan": "^2.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "PelicanProvisioner\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "analyse": "@php vendor/bin/phpstan analyse --memory-limit=1G",
+        "check": [
+            "@php vendor/bin/pint --test",
+            "@analyse",
+            "@test"
+        ],
+        "format": "@php vendor/bin/pint",
+        "test": "@php vendor/bin/pest"
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        },
+        "preferred-install": "dist",
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
