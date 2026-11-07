@@ -63,6 +63,13 @@ it('replaces the global rules with the quota selection', function () {
         ->and($allowlist->placement(null, $oneNode, AccessMode::Overwrite)->rejected)->toBeTrue();
 });
 
+it('treats a node list with gaps as empty, so callers reindex after filtering', function () {
+    $allowlist = new QuotaAllowlist();
+
+    expect($allowlist->nodes([1], AccessMode::Overwrite, [0 => 4, 2 => 8]))->toBe([])
+        ->and($allowlist->nodes([0 => 1, 2 => 2], AccessMode::Negative, []))->toBe([]);
+});
+
 it('is applied when a server is created, not only in the form', function () {
     $root = dirname(__DIR__, 2);
     $provisioner = (string) file_get_contents($root.'/src/Services/ServerProvisioner.php');
@@ -73,6 +80,7 @@ it('is applied when a server is created, not only in the form', function () {
         ->and($provisioner)->toContain('allow_all_eggs')
         ->and($provisioner)->toContain('$this->allowlist->eggs(')
         ->and($provisioner)->toContain('$this->allowlist->placement(')
-        ->and($page)->toContain('node_id')
-        ->and($page)->toContain('QuotaAllowlist');
+        ->and($page)->toContain('->map(fn (Node $node): int => (int) $node->id)')
+        ->and($page)->toContain('->values()')
+        ->and($provisioner)->toContain('->values()');
 });

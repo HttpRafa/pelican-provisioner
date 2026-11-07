@@ -432,7 +432,7 @@ class CreateServerPage extends Page
             $requested->disk,
             $requested->cpu,
             $settings->tags,
-        )->pluck('id')->map(fn (mixed $id): int => (int) $id)->all();
+        )->pluck('id')->map(fn (mixed $id): int => (int) $id)->values()->all();
         $selected = QuotaAllowlist::ids($quota->allowed_node_ids);
         $mode = AccessMode::parse($quota->node_mode);
 
@@ -442,6 +442,7 @@ class CreateServerPage extends Page
                 ->get()
                 ->filter(fn (Node $node): bool => $node->isViable($requested->memory, $requested->disk, $requested->cpu))
                 ->map(fn (Node $node): int => (int) $node->id)
+                ->values()
                 ->all();
         }
 

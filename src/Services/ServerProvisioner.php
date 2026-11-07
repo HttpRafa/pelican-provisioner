@@ -396,6 +396,7 @@ final class ServerProvisioner
             ->handle($requested->memory, $requested->disk, $requested->cpu, $settings->tags)
             ->pluck('id')
             ->map(fn (mixed $id): int => (int) $id)
+            ->values()
             ->all();
         $selected = QuotaAllowlist::ids($quota->allowed_node_ids);
         $mode = AccessMode::parse($quota->node_mode);
