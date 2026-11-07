@@ -191,7 +191,7 @@ class PelicanProvisionerPlugin implements HasPluginSettings, Plugin
             ->label(trans('pelican-provisioner::strings.'.$label))
             ->helperText(trans($name === 'default_server_limit'
                 ? 'pelican-provisioner::strings.hint_server_limit'
-                : 'pelican-provisioner::strings.hint_unlimited'))
+                : 'pelican-provisioner::strings.settings.default_quota_finite'))
             ->rules([
                 fn (Get $get): Closure => function (string $attribute, mixed $value, Closure $fail) use ($get, $name): void {
                     $values = [
