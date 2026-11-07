@@ -51,6 +51,7 @@ class RecordQuotaHistory
                     $actor instanceof User ? (string) $actor->username : null,
                     $before,
                     $after,
+                    trans('pelican-provisioner::strings.history_unlimited'),
                 ));
 
             if ($actor instanceof User) {

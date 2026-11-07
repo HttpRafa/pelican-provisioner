@@ -10,6 +10,7 @@ return [
     'servers' => 'Server',
     'no_limit' => 'Kein Limit',
     'unlimited' => 'Unbegrenzt',
+    'history_unlimited' => 'unbegrenzt',
     'hint_unlimited' => '0 bedeutet unbegrenzt. Ein begrenztes Kontingent kann keinen unbegrenzten Server erzeugen.',
     'hint_server_limit' => '0 bedeutet, dass die Anzahl der Server dieser Person nicht begrenzt ist.',
     'hint_feature_limit' => 'Wird auf jeden Server kopiert, den dieser Benutzer erstellt. 0 bedeutet, dass der Server davon keine anlegen kann.',
