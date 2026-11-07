@@ -111,6 +111,7 @@ class ResourceQuotaRelationManager extends RelationManager
                 ->minValue(0)
                 ->maxValue(ResourceAmounts::ABSOLUTE_MAX)
                 ->rules([ResourceQuotaResource::amountRule()]),
+            ...ResourceQuotaResource::allowlistFields(),
         ]);
     }
 }
