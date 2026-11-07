@@ -1,4 +1,4 @@
-name: release
+name: Release
 
 on:
   push:
@@ -10,25 +10,35 @@ permissions:
 
 jobs:
   checks:
+    name: 🧪 Checks
     uses: ./.github/workflows/checks.yml
 
   release:
+    name: 📦 Publish
     needs: checks
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: ⬇️ Checkout Code
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+
+      - name: 🐘 Setup PHP
+        uses: shivammathur/setup-php@v2
         with:
           php-version: "8.5"
           coverage: none
           extensions: zip
-      - name: Refuse a tag that does not match plugin.json
+
+      - name: 🔎 Check the tag matches plugin.json
         run: test "$GITHUB_REF_NAME" = "v$(jq -r .version plugin.json)"
-      - run: php scripts/build-zip.php
-      - run: gh release create "$GITHUB_REF_NAME" dist/*.zip --generate-notes --verify-tag
+
+      - name: 📦 Build the plugin archive
+        run: php scripts/build-zip.php
+
+      - name: 🚀 Publish the release
+        run: gh release create "$GITHUB_REF_NAME" dist/*.zip --generate-notes --verify-tag
         env:
           GH_TOKEN: ${{ github.token }}
