@@ -10,6 +10,7 @@ use App\Filament\App\Resources\Servers\Pages\ListServers;
 use App\Models\ActivityLog;
 use App\Models\Allocation;
 use App\Models\Egg;
+use App\Models\Node;
 use App\Models\Role;
 use App\Models\Server;
 use App\Models\Subuser;
@@ -92,6 +93,67 @@ reset_state(['allowed_eggs' => $usableEggs]);
 $server = create_server('i', $optionalEgg, rows: [['env_variable' => 'OPTIONAL_FLAG', 'variable_value' => null]]);
 check('a blank optional field is stored empty', stored_environment($server)['OPTIONAL_FLAG'], '');
 check('a blank required field is refused', outcome(fn () => create_server('j', $allowedEgg, rows: [['env_variable' => 'SERVER_JAR', 'variable_value' => null]])), 'invalid_variables');
+
+section('Creating: egg and node access per quota');
+
+$nodeIds = Node::query()->pluck('id', 'name');
+$publicNode = (int) $nodeIds['Public Tagged'];
+$privateNode = (int) $nodeIds['Private Tagged'];
+$untaggedNode = (int) $nodeIds['Public Untagged'];
+$access = function (array $columns) use ($alice): void {
+    ResourceQuota::query()->where('user_id', $alice->id)->update($columns);
+    as_user('alice');
+};
+$createOn = fn (string $name, int $eggId, ?int $node): string => outcome(fn () => provisioner()->create($name, $eggId, 10, 64, 64, [], $node));
+$placedOn = fn (string $name): ?string => Server::query()->where('name', $name)->first()?->node?->name;
+
+reset_state(['allowed_eggs' => (string) $allowedEgg]);
+$access(['egg_mode' => 'additive', 'allowed_egg_ids' => json_encode([$forbiddenEgg])]);
+check('add mode allows an egg the global list leaves out', $createOn('ea1', $forbiddenEgg, null), 'allowed');
+check('and keeps the globally allowed eggs', $createOn('ea2', $allowedEgg, null), 'allowed');
+
+reset_state(['allowed_eggs' => $usableEggs]);
+$access(['egg_mode' => 'negative', 'allowed_egg_ids' => json_encode([$allowedEgg])]);
+check('remove mode takes a globally allowed egg away', $createOn('en1', $allowedEgg, null), 'egg_not_allowed');
+check('and leaves the other allowed eggs', $createOn('en2', $optionalEgg, null), 'allowed');
+
+reset_state(['allowed_eggs' => (string) $allowedEgg]);
+$access(['egg_mode' => 'overwrite', 'allow_all_eggs' => true, 'allowed_egg_ids' => null]);
+check('replace mode can allow every egg', $createOn('eo1', $forbiddenEgg, null), 'allowed');
+$access(['allow_all_eggs' => false, 'allowed_egg_ids' => json_encode([$forbiddenEgg])]);
+check('replace mode with a list allows only that list', $createOn('eo2', $allowedEgg, null), 'egg_not_allowed');
+
+reset_state(['allowed_eggs' => (string) $allowedEgg]);
+check('without a node mode a submitted node is refused', $createOn('nn1', $allowedEgg, $publicNode), 'node_not_allowed');
+check('and the panel picks a tagged public node', [$createOn('nn2', $allowedEgg, null), $placedOn('nn2')], ['allowed', 'Public Tagged']);
+
+reset_state(['allowed_eggs' => (string) $allowedEgg]);
+$access(['node_mode' => 'additive', 'allowed_node_ids' => json_encode([$privateNode])]);
+check('add mode allows a private node', [$createOn('na1', $allowedEgg, $privateNode), $placedOn('na1')], ['allowed', 'Private Tagged']);
+check('a node mode requires a node to be chosen', $createOn('na2', $allowedEgg, null), 'node_not_allowed');
+check('a node outside the resolved list is refused', $createOn('na3', $allowedEgg, $untaggedNode), 'node_not_allowed');
+
+reset_state(['allowed_eggs' => (string) $allowedEgg]);
+$access(['node_mode' => 'negative', 'allowed_node_ids' => json_encode([$publicNode])]);
+check('remove mode takes a tagged node away', $createOn('nr1', $allowedEgg, $publicNode), 'node_not_allowed');
+
+reset_state(['allowed_eggs' => (string) $allowedEgg]);
+$access(['node_mode' => 'overwrite', 'allowed_node_ids' => json_encode([$untaggedNode])]);
+check('replace mode uses only its own nodes, tagged or not', [$createOn('no1', $allowedEgg, $untaggedNode), $placedOn('no1')], ['allowed', 'Public Untagged']);
+check('replace mode refuses the tagged node it left out', $createOn('no2', $allowedEgg, $publicNode), 'node_not_allowed');
+
+as_user('alice');
+Filament::setCurrentPanel(Filament::getPanel('app'));
+$page = Livewire::actingAs($alice)->test(CreateServerPage::class)
+    ->set('data.name', 'form-node')
+    ->set('data.egg_id', $allowedEgg)
+    ->set('data.cpu', 10)
+    ->set('data.memory', 64)
+    ->set('data.disk', 64)
+    ->set('data.node_id', $untaggedNode)
+    ->call('save');
+check('the create form places the server on the chosen node', $placedOn('form-node'), 'Public Untagged');
+$access(['node_mode' => null, 'allowed_node_ids' => null, 'egg_mode' => null, 'allowed_egg_ids' => null, 'allow_all_eggs' => false]);
 
 section('Creating: quota and rate limit');
 
