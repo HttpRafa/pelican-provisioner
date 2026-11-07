@@ -91,7 +91,8 @@ return [
         'eggs_help' => 'Benutzer können Server nur mit diesen Eggs erstellen. Solange die Liste leer ist, kann niemand einen Server erstellen, außer jedes Egg ist erlaubt. Eggs mit privilegierten Installationsskripten nur aufnehmen, wenn das ausdrücklich gewollt ist.',
         'default_quota' => 'Standardkontingent für neue Benutzer',
         'default_quota_help' => 'Gilt für jedes Benutzerkonto, das nach dem Speichern angelegt wird. Bestehende Konten bleiben unverändert. Alle vier Felder leer lassen, dann bekommen neue Benutzer kein Kontingent. Leer ist nicht unbegrenzt.',
-        'default_quota_incomplete' => 'Alle vier Limits eintragen oder alle vier leer lassen. 0 ist ein echtes Limit und bedeutet bei CPU, RAM und Speicherplatz unbegrenzt.',
+        'default_quota_incomplete' => 'Alle vier Limits eintragen oder alle vier leer lassen. CPU, RAM und Speicherplatz müssen größer als 0 sein.',
+        'default_quota_finite' => 'Muss größer als 0 sein. Jedes neue Konto, auch selbst registrierte, bekommt diesen Wert, daher kann der Standard nicht unbegrenzt sein.',
     ],
     'admin' => [
         'empty' => 'Noch keine Kontingente. Lege eines an, dann kann diese Person Server über die Serverliste erstellen.',
