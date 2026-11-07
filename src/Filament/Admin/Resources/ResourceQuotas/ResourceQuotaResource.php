@@ -24,6 +24,8 @@ use Filament\Tables\Enums\PaginationMode;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
+use PelicanProvisioner\Domain\InvalidResourceAmountException;
+use PelicanProvisioner\Domain\QuotaLimits;
 use PelicanProvisioner\Domain\ResourceAmounts;
 use PelicanProvisioner\Filament\Admin\Resources\ResourceQuotas\Pages\ManageResourceQuotas;
 use PelicanProvisioner\Models\ResourceQuota;
@@ -196,7 +198,8 @@ class ResourceQuotaResource extends Resource
                             ->integer()
                             ->required()
                             ->minValue(0)
-                            ->maxValue(ResourceAmounts::ABSOLUTE_MAX),
+                            ->maxValue(ResourceAmounts::ABSOLUTE_MAX)
+                            ->rules([self::amountRule()]),
                         TextEntry::make('current_usage')
                             ->label(trans('pelican-provisioner::strings.admin.usage_heading'))
                             ->visible(fn (?ResourceQuota $record): bool => $record !== null)
@@ -263,6 +266,17 @@ class ResourceQuotaResource extends Resource
         return user()?->can('viewList user') ?? false;
     }
 
+    public static function amountRule(): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail): void {
+            try {
+                QuotaLimits::parse($value);
+            } catch (InvalidResourceAmountException) {
+                $fail(trans('pelican-provisioner::strings.admin.invalid_quota'));
+            }
+        };
+    }
+
     private static function quotaField(string $name, string $suffix): TextInput
     {
         return TextInput::make($name)
@@ -272,6 +286,7 @@ class ResourceQuotaResource extends Resource
             ->integer()
             ->minValue(0)
             ->maxValue(ResourceAmounts::ABSOLUTE_MAX)
+            ->rules([self::amountRule()])
             ->suffix($suffix);
     }
 

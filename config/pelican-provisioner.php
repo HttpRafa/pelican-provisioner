@@ -13,4 +13,8 @@ return [
     'deployment_ports' => env('PROVISIONER_DEPLOYMENT_PORTS', ''),
     'allowed_eggs' => env('PROVISIONER_ALLOWED_EGGS', ''),
     'allow_all_eggs' => env('PROVISIONER_ALLOW_ALL_EGGS', 'false'),
+    'default_cpu' => env('PROVISIONER_DEFAULT_CPU', ''),
+    'default_memory' => env('PROVISIONER_DEFAULT_MEMORY', ''),
+    'default_disk' => env('PROVISIONER_DEFAULT_DISK', ''),
+    'default_server_limit' => env('PROVISIONER_DEFAULT_SERVER_LIMIT', ''),
 ];
