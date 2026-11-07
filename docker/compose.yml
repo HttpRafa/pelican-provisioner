@@ -15,15 +15,9 @@ services:
     volumes:
       - pelican-data:/pelican-data
       - pelican-logs:/var/www/html/storage/logs
-      - type: volume
-        source: pelican-data
-        target: /var/www/html/plugins
-        volume:
-          subpath: plugins
       - type: bind
         source: ..
         target: /var/www/html/plugins/pelican-provisioner
-        read_only: false
     environment:
       XDG_DATA_HOME: /pelican-data
       APP_URL: http://127.0.0.1:8088
