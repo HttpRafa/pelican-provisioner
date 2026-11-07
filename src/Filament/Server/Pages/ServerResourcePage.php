@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PelicanProvisioner\Filament\Server\Pages;
 
+use App\Filament\App\Resources\Servers\Pages\ListServers;
 use App\Filament\Server\Pages\ServerFormPage;
 use App\Models\Server;
 use App\Models\User;
@@ -119,26 +120,34 @@ class ServerResourcePage extends ServerFormPage
                 ->modalHeading(trans('pelican-provisioner::strings.modals.delete_server_confirm'))
                 ->modalDescription(trans('pelican-provisioner::strings.modals.delete_server_warning'))
                 ->modalSubmitActionLabel(trans('pelican-provisioner::strings.modals.delete_server'))
-                ->action(function (ServerProvisioner $provisioner): void {
+                ->action(function (ServerProvisioner $provisioner): mixed {
                     $server = $this->getRecord();
+                    $serverList = ListServers::getUrl(panel: 'app');
 
                     try {
                         $provisioner->delete($server);
-
-                        Notification::make()
-                            ->title(trans('pelican-provisioner::strings.notifications.server_deleted'))
-                            ->body(trans('pelican-provisioner::strings.notifications.server_deleted_success'))
-                            ->success()
-                            ->send();
-
-                        $this->redirect(Filament::getPanel('app')->getUrl());
                     } catch (ProvisioningException) {
                         Notification::make()
                             ->title(trans('pelican-provisioner::strings.notifications.server_delete_error'))
                             ->body(trans('pelican-provisioner::strings.notifications.delete_failed'))
                             ->danger()
                             ->send();
+
+                        return null;
                     }
+
+                    Notification::make()
+                        ->title(trans('pelican-provisioner::strings.notifications.server_deleted'))
+                        ->body(trans('pelican-provisioner::strings.notifications.server_deleted_success'))
+                        ->success()
+                        ->send();
+
+                    // This page's tenant is the server. Rendering it after the row is gone
+                    // resolves that tenant again and replaces the redirect with a 404.
+                    $this->skipRender();
+                    $this->redirect($serverList, navigate: false);
+
+                    return redirect()->to($serverList);
                 }),
         ];
     }
