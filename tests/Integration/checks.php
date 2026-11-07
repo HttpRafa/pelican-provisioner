@@ -398,6 +398,27 @@ usort($logs, fn (string $left, string $right): int => filemtime($right) <=> file
 $lastLog = (string) file_get_contents($logs[0] ?? '/dev/null');
 check('a refused request reaches the panel log', str_contains($lastLog, 'Refused resize') && str_contains($lastLog, '"reason":"not_owner"'), true);
 
+section('Quota history only for real changes');
+
+reset_state();
+$adminUser = User::query()->where('username', 'admin')->firstOrFail();
+as_user('admin');
+$history = fn (string $event): int => ActivityLog::query()->where('event', $event)->count();
+$limitsBefore = $history('user:provisioner.quota');
+$accessBefore = $history('user:provisioner.quota_access');
+$aliceQuota = ResourceQuota::query()->where('user_id', $alice->id)->firstOrFail();
+$aliceQuota->touch();
+check('a save that changes nothing writes no entry', [$history('user:provisioner.quota') - $limitsBefore, $history('user:provisioner.quota_access') - $accessBefore], [0, 0]);
+$aliceQuota->forceFill(['egg_mode' => 'additive', 'allowed_egg_ids' => [$forbiddenEgg]])->save();
+check('an access change writes an access entry and no limits entry', [$history('user:provisioner.quota') - $limitsBefore, $history('user:provisioner.quota_access') - $accessBefore], [0, 1]);
+$accessEntry = ActivityLog::query()->where('event', 'user:provisioner.quota_access')->latest('id')->first();
+check('the access entry names the actor and the new egg rule', [$accessEntry?->properties?->get('actor'), $accessEntry?->properties?->get('eggs')], ['admin', 'Add to the global list (1)']);
+check('and its label is translated', str_contains((string) $accessEntry?->getLabel(), 'changed which eggs and nodes'), true);
+$aliceQuota->forceFill(['cpu' => 300])->save();
+check('a limits change writes only a limits entry', [$history('user:provisioner.quota') - $limitsBefore, $history('user:provisioner.quota_access') - $accessBefore], [1, 1]);
+reset_state();
+ResourceQuota::query()->where('user_id', $alice->id)->update(['egg_mode' => null, 'allowed_egg_ids' => null]);
+
 section('Cache lock on databases other than MySQL');
 
 $lock = new UserLock(DB::connection('sqlite'), app('cache'));
