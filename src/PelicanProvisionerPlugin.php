@@ -64,6 +64,14 @@ class PelicanProvisionerPlugin implements HasPluginSettings, Plugin
                 ->send();
         }
 
+        if ($settings->defaultQuotaInvalid) {
+            Notification::make()
+                ->title(trans('pelican-provisioner::strings.notifications.default_quota_invalid_stored'))
+                ->danger()
+                ->persistent()
+                ->send();
+        }
+
         return [
             'database_limit' => $sanitizer->natural($config['database_limit'] ?? null) ?? 0,
             'allocation_limit' => $sanitizer->natural($config['allocation_limit'] ?? null) ?? 0,

@@ -69,6 +69,7 @@ return [
         'settings_not_written' => 'Fix the highlighted values. Nothing was written.',
         'settings_write_failed' => 'The settings could not be written to the environment file. Check the panel log.',
         'settings_invalid_stored' => 'The saved plugin settings are invalid. Creation stays off until you save a valid configuration.',
+        'default_quota_invalid_stored' => 'The saved default quota is invalid. New accounts get no quota until you save it again. Existing quotas still work.',
     ],
     'settings' => [
         'limits' => 'Feature limits',

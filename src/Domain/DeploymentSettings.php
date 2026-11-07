@@ -24,6 +24,7 @@ final readonly class DeploymentSettings
         public array $allowedEggIds,
         public bool $allowAllEggs,
         public ?Quota $defaultQuota = null,
+        public bool $defaultQuotaInvalid = false,
     ) {}
 
     public static function blocked(): self
