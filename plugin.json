@@ -2,7 +2,7 @@
     "id": "pelican-provisioner",
     "name": "Pelican Provisioner",
     "author": "HttpRafa",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "Let users create their own servers inside administrator-defined CPU, memory, disk, and server quotas.",
     "category": "plugin",
     "url": "https://github.com/HttpRafa/pelican-provisioner",
