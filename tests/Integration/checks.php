@@ -282,6 +282,24 @@ app()->loadEnvironmentFrom('.env.does-not-exist');
 check('a failed write is reported instead of thrown', outcome(fn () => $plugin->saveSettings($form)), 'allowed');
 app()->loadEnvironmentFrom($original);
 
+section('Quota history for the owner');
+
+reset_state();
+as_user('admin');
+$bobQuota = ResourceQuota::query()->create(['user_id' => $bob->id, 'cpu' => 100, 'memory' => 1024, 'disk' => 2048, 'server_limit' => 1]);
+$bobQuota->forceFill(['cpu' => 150])->save();
+$entries = User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota')->orderBy('id')->get();
+check('the owner sees an entry for the new and the changed quota', $entries->count(), 2);
+check('the change names the admin as actor', [$entries->last()?->actor_id, $entries->last()?->properties?->get('actor')], [$admin->id, 'admin']);
+check('with the old and new CPU', [$entries->last()?->properties?->get('old_cpu'), $entries->last()?->properties?->get('new_cpu')], ['100', '150']);
+check('and a translated sentence', str_contains((string) $entries->last()?->getLabel(), 'changed the quota from'), true);
+$bobQuota->delete();
+check('deleting the quota adds an entry too', User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota')->count(), 3);
+auth()->forgetUser();
+ResourceQuota::query()->create(['user_id' => $bob->id, 'cpu' => 1, 'memory' => 1, 'disk' => 1, 'server_limit' => 1])->delete();
+check('a change without a signed-in user is credited to the system', User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota')->latest('id')->first()?->properties?->get('actor'), 'system');
+reset_state();
+
 section('Create form, used normally');
 
 $openCreateForm = function (int $eggId, string $name) use ($alice) {
