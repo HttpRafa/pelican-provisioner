@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace PelicanProvisioner\Services;
 
+use App\Models\Egg;
+use PelicanProvisioner\Domain\QuotaAllowlist;
 use PelicanProvisioner\Domain\QuotaPolicy;
 use PelicanProvisioner\Domain\QuotaViolationException;
 use PelicanProvisioner\Domain\ResourceAmounts;
@@ -17,6 +19,8 @@ final class QuotaAccess
     public function __construct(
         private readonly UsageQuery $usage,
         private readonly QuotaPolicy $policy,
+        private readonly SettingsRepository $settings,
+        private readonly QuotaAllowlist $allowlist,
     ) {}
 
     public function quotaFor(int $userId): ?ResourceQuota
@@ -54,5 +58,30 @@ final class QuotaAccess
         } catch (QuotaViolationException) {
             return false;
         }
+    }
+
+    /** Uses the same rules as the egg list on the create form, so the button is not offered when that list would be empty. */
+    public function canChooseAnEgg(int $userId): bool
+    {
+        $quota = $this->quotaFor($userId);
+        $settings = $this->settings->current();
+
+        if ($quota === null || !$settings->createUsable) {
+            return false;
+        }
+
+        $choice = $this->allowlist->eggs(
+            $settings->allowAllEggs,
+            $settings->allowedEggIds,
+            $quota->egg_mode,
+            $quota->allowed_egg_ids,
+            (bool) $quota->allow_all_eggs,
+        );
+
+        if ($choice->allowAll) {
+            return Egg::query()->whereNotIn('id', $choice->excludedIds)->exists();
+        }
+
+        return $choice->ids !== [] && Egg::query()->whereIn('id', $choice->ids)->exists();
     }
 }
