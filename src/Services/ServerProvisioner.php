@@ -453,7 +453,7 @@ final class ServerProvisioner
         $kept = [];
 
         foreach (Node::query()->whereIn('id', $ids)->get() as $node) {
-            if ($node->isViable($requested->memory, $requested->disk, $requested->cpu)) {
+            if ($node instanceof Node && $node->isViable($requested->memory, $requested->disk, $requested->cpu)) {
                 $kept[] = (int) $node->id;
             }
         }
