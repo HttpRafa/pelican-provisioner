@@ -24,16 +24,25 @@ class CreateServerAction extends Action
         $this->icon('tabler-cube-plus');
         $this->button();
         $this->visible(fn (): bool => $this->access()?->canOpen($this->actorId()) ?? false);
-        $this->disabled(fn (): bool => !($this->access()?->canSpendMinimum($this->actorId()) ?? false));
+        $this->disabled(function (): bool {
+            $access = $this->access();
+            $actorId = $this->actorId();
+
+            return $access === null || !$access->canChooseAnEgg($actorId) || !$access->canSpendMinimum($actorId);
+        });
         $this->tooltip(function (): ?string {
             $access = $this->access();
             $actorId = $this->actorId();
 
-            if ($access === null || !$access->canOpen($actorId) || $access->canSpendMinimum($actorId)) {
+            if ($access === null || !$access->canOpen($actorId)) {
                 return null;
             }
 
-            return trans('pelican-provisioner::strings.quota_full');
+            if (!$access->canChooseAnEgg($actorId)) {
+                return trans('pelican-provisioner::strings.no_eggs');
+            }
+
+            return $access->canSpendMinimum($actorId) ? null : trans('pelican-provisioner::strings.quota_full');
         });
         $this->url(fn (): string => CreateServerPage::getUrl());
     }
