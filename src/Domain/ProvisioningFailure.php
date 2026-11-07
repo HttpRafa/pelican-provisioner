@@ -8,6 +8,7 @@ enum ProvisioningFailure: string
 {
     case Forbidden = 'forbidden';
     case EggNotAllowed = 'egg_not_allowed';
+    case NodeNotAllowed = 'node_not_allowed';
     case Quota = 'quota_exceeded';
     case NoNode = 'no_viable_node_found';
     case NoAllocation = 'no_viable_allocation_found';

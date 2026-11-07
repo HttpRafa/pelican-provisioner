@@ -6,10 +6,15 @@ namespace PelicanProvisioner\Domain;
 
 final class EggAllowlist
 {
-    /** @param list<int> $allowedEggIds An empty list allows nothing. Every egg is only available through the explicit $allowAll setting. */
-    public function permits(int $eggId, array $allowedEggIds, bool $allowAll): bool
+    /**
+     * An empty list allows nothing. Every egg is only available through the explicit $allowAll setting. Excluded ids are refused even then, so a user can lose eggs from an otherwise open list.
+     *
+     * @param  list<int>  $allowedEggIds
+     * @param  list<int>  $excludedEggIds
+     */
+    public function permits(int $eggId, array $allowedEggIds, bool $allowAll, array $excludedEggIds = []): bool
     {
-        if ($eggId <= 0) {
+        if ($eggId <= 0 || in_array($eggId, $excludedEggIds, true)) {
             return false;
         }
 
