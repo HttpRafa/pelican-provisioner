@@ -86,6 +86,8 @@ final class QuotaAllowlist
     }
 
     /**
+     * Only the values matter. A list saved with gaps in its keys, or decoded as an object, still names the same ids; treating it as empty would let a remove list remove nothing.
+     *
      * @return list<int>
      */
     public static function ids(mixed $value): array
@@ -99,7 +101,7 @@ final class QuotaAllowlist
             $value = is_array($decoded) ? $decoded : [];
         }
 
-        if (!is_array($value) || !array_is_list($value)) {
+        if (!is_array($value)) {
             return [];
         }
 
