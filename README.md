@@ -69,7 +69,7 @@ Server files are written to `docker/wings/` as your user. To open a server conso
 | `WINGS_SUBNET` | `10.213.0.0/16` | Network for server containers. It must not overlap an existing Docker network. |
 | `EGG_URL` | Redis 7 | Egg the friend account can use |
 
-`docker compose down -v` from `docker/` removes the stack. Server files stay in `docker/wings/volumes` until you delete them.
+`./teardown.sh` from `docker/` removes the stack, including the server containers Wings started, which `docker compose down` does not know about. Server files stay in `docker/wings/volumes` until you delete them.
 
 The plugin directory is mounted into the container, so the panel can write its install state into `plugin.json`.
 
