@@ -1,6 +1,9 @@
 # Local Pelican panel (SQLite) and Wings, for trying the plugin in a browser. Do not deploy this.
-# Wings gets the Docker socket and debug output is on, which is why both services only listen on loopback.
-# Start it with ./bootstrap.sh from this directory, then open http://127.0.0.1:8088.
+# Wings gets the Docker socket and debug output is on, which is why every published port listens on loopback only.
+# Start it with ./bootstrap.sh from this directory. It prints the panel address and the account passwords.
+# The ports can be changed with PANEL_PORT, WINGS_PORT, and WINGS_SFTP_PORT.
+
+name: pelican-provisioner-dev
 
 services:
   panel:
@@ -9,7 +12,7 @@ services:
     networks:
       - pelican
     ports:
-      - "127.0.0.1:8088:80"
+      - "127.0.0.1:${PANEL_PORT:-8088}:80"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -20,7 +23,7 @@ services:
         target: /var/www/html/plugins/pelican-provisioner
     environment:
       XDG_DATA_HOME: /pelican-data
-      APP_URL: http://127.0.0.1:8088
+      APP_URL: "http://127.0.0.1:${PANEL_PORT:-8088}"
       APP_ENV: local
       APP_DEBUG: "true"
       APP_INSTALLED: "true"
@@ -45,27 +48,29 @@ services:
     restart: unless-stopped
     networks:
       - pelican
-      - wings0
     ports:
-      - "127.0.0.1:8080:8080"
-      - "127.0.0.1:2022:2022"
+      - "127.0.0.1:${WINGS_PORT:-18080}:${WINGS_PORT:-18080}"
+      - "127.0.0.1:${WINGS_SFTP_PORT:-2022}:${WINGS_SFTP_PORT:-2022}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       TZ: UTC
-      WINGS_UID: "988"
-      WINGS_GID: "988"
+      # Server files are written as this user. bootstrap.sh passes your own uid and gid so you can delete them.
+      WINGS_UID: "${WINGS_UID:-988}"
+      WINGS_GID: "${WINGS_GID:-988}"
       WINGS_USERNAME: pelican
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /etc/ssl/certs:/etc/ssl/certs:ro
+      # Wings starts server containers through the host's Docker, so every path it mounts into a server
+      # must exist at the same place on the host. These three are mounted at their host path for that reason.
       - ./wings/etc:/etc/pelican
       - "./wings/etc:${PWD:?run this from the docker directory}/wings/etc"
-      - wings-data:/var/lib/pelican
       - "./wings/volumes:${PWD:?run this from the docker directory}/wings/volumes"
-      - wings-logs:/var/log/pelican
       - "./wings/tmp:${PWD:?run this from the docker directory}/wings/tmp"
+      - wings-data:/var/lib/pelican
+      - wings-logs:/var/log/pelican
     depends_on:
       panel:
         condition: service_healthy
@@ -75,8 +80,6 @@ volumes:
   pelican-logs:
   wings-data:
   wings-logs:
-  wings-tmp:
 
 networks:
   pelican:
-  wings0:
