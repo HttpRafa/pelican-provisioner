@@ -23,7 +23,7 @@ return [
     'create_server' => 'Server erstellen',
     'quota_full' => 'Für einen neuen Server ist kein Kontingent mehr übrig.',
     'resource_help' => 'Du kannst höchstens so viel vergeben, wie noch übrig ist. Das Limit wird beim Erstellen erneut geprüft.',
-    'resource_page' => 'Ressourcenlimits',
+    'resource_page' => 'Ressourcen',
     'steps' => [
         'details' => 'Server',
         'details_help' => 'Name und Software festlegen.',

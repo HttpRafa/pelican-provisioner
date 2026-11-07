@@ -23,7 +23,7 @@ return [
     'create_server' => 'Create server',
     'quota_full' => 'You have used the quota available for a new server.',
     'resource_help' => 'You can use at most what you have left. The limit is checked again when the server is created.',
-    'resource_page' => 'Resource limits',
+    'resource_page' => 'Resources',
     'steps' => [
         'details' => 'Server',
         'details_help' => 'Name it and choose what it runs.',
