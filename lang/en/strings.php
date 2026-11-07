@@ -10,6 +10,7 @@ return [
     'servers' => 'Servers',
     'no_limit' => 'No limit',
     'unlimited' => 'Unlimited',
+    'history_unlimited' => 'unlimited',
     'hint_unlimited' => '0 means unlimited. A finite quota cannot be spent on an unlimited server.',
     'hint_server_limit' => '0 means there is no limit on how many servers this user can own.',
     'hint_feature_limit' => 'Copied onto each server this user creates. 0 means that server cannot create any.',
