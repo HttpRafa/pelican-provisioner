@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace PelicanProvisioner\Filament\Admin\Resources\Users\RelationManagers;
 
+use App\Models\User;
+use Filament\Actions\Action;
+use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
@@ -15,7 +18,9 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
 use PelicanProvisioner\Domain\ResourceAmounts;
 use PelicanProvisioner\Filament\Admin\Resources\ResourceQuotas\ResourceQuotaResource;
+use PelicanProvisioner\Models\QuotaBan;
 use PelicanProvisioner\Models\ResourceQuota;
+use PelicanProvisioner\Services\SettingsRepository;
 use PelicanProvisioner\Services\UsageQuery;
 
 class ResourceQuotaRelationManager extends RelationManager
@@ -66,11 +71,19 @@ class ResourceQuotaRelationManager extends RelationManager
                 ViewAction::make()
                     ->hidden(fn (ResourceQuota $record): bool => static::getEditAuthorizationResponse($record)->allowed()),
                 EditAction::make(),
-                DeleteAction::make(),
+                DeleteAction::make()
+                    ->modalDescription(trans('pelican-provisioner::strings.admin.delete_override')),
+            ])
+            ->toolbarActions([
+                CreateAction::make()
+                    ->visible(fn (): bool => !$this->hasOverride())
+                    ->authorize(fn (): bool => $this->canManageOwner('create', ResourceQuota::class)),
+                $this->banAction(),
+                $this->liftAction(),
             ])
             ->paginated(false)
             ->emptyStateIcon('tabler-cube-plus')
-            ->emptyStateDescription(trans('pelican-provisioner::strings.admin.empty_user'));
+            ->emptyStateDescription(fn (): string => $this->emptyDescription());
     }
 
     public function form(Schema $schema): Schema
@@ -113,5 +126,104 @@ class ResourceQuotaRelationManager extends RelationManager
                 ->rules([ResourceQuotaResource::amountRule()]),
             ...ResourceQuotaResource::allowlistFields(),
         ]);
+    }
+
+    private function banAction(): Action
+    {
+        return Action::make('ban')
+            ->label(trans('pelican-provisioner::strings.admin.ban'))
+            ->icon('tabler-ban')
+            ->color('danger')
+            ->visible(fn (): bool => $this->ban() === null && $this->canManageOwner('create', QuotaBan::class))
+            ->requiresConfirmation()
+            ->modalDescription(trans('pelican-provisioner::strings.admin.ban_help'))
+            ->action(function (): void {
+                $owner = $this->owner();
+
+                if (!$owner instanceof User || !$this->canManageOwner('create', QuotaBan::class)) {
+                    return;
+                }
+
+                QuotaBan::query()->create(['user_id' => $owner->id]);
+            });
+    }
+
+    private function liftAction(): Action
+    {
+        return Action::make('lift')
+            ->label(trans('pelican-provisioner::strings.admin.lift_ban'))
+            ->icon('tabler-lock-open')
+            ->visible(function (): bool {
+                $ban = $this->ban();
+
+                return $ban instanceof QuotaBan && (user()?->can('delete', $ban) ?? false);
+            })
+            ->requiresConfirmation()
+            ->modalDescription(trans('pelican-provisioner::strings.admin.lift_ban_help'))
+            ->action(function (): void {
+                $ban = $this->ban();
+
+                if ($ban instanceof QuotaBan && (user()?->can('delete', $ban) ?? false)) {
+                    $ban->delete();
+                }
+            });
+    }
+
+    private function emptyDescription(): string
+    {
+        if ($this->ban() instanceof QuotaBan) {
+            return trans('pelican-provisioner::strings.admin.banned_user');
+        }
+
+        $default = app(SettingsRepository::class)->current()->defaultQuota;
+
+        if ($default === null) {
+            return trans('pelican-provisioner::strings.admin.empty_user');
+        }
+
+        return trans('pelican-provisioner::strings.admin.using_default', [
+            'cpu' => $default->cpu,
+            'memory' => $default->memory,
+            'disk' => $default->disk,
+            'servers' => $default->serverLimit ?? 0,
+        ]);
+    }
+
+    private function hasOverride(): bool
+    {
+        $owner = $this->owner();
+
+        return $owner instanceof User && ResourceQuota::query()->where('user_id', $owner->id)->exists();
+    }
+
+    private function ban(): ?QuotaBan
+    {
+        $owner = $this->owner();
+
+        if (!$owner instanceof User) {
+            return null;
+        }
+
+        $ban = QuotaBan::query()->where('user_id', $owner->id)->first();
+
+        return $ban instanceof QuotaBan ? $ban : null;
+    }
+
+    private function canManageOwner(string $ability, string $model): bool
+    {
+        $owner = $this->owner();
+        $actor = user();
+
+        return $actor instanceof User
+            && $owner instanceof User
+            && $actor->can($ability, $model)
+            && $actor->canTarget($owner);
+    }
+
+    private function owner(): ?User
+    {
+        $owner = $this->getOwnerRecord();
+
+        return $owner instanceof User ? $owner : null;
     }
 }

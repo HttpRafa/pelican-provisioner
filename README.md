@@ -34,7 +34,7 @@ Root administrators can manage overrides and bans immediately. Other roles need 
 
 Save one default CPU, memory, disk, and server limit in the plugin settings. Every user without an override uses it, including accounts that already exist and accounts that register themselves. Leave the default empty and those users cannot create servers. An empty default is not unlimited. CPU, memory, and disk in the default must be above 0. A server limit of 0 means no cap on how many servers they can own.
 
-A row in Quotas replaces the default for that one user. Deleting the row returns the user to the default. It does not take self-service away. To block one user even when a default or an override exists, ban them. A ban leaves the override in place, and lifting the ban restores it.
+A row in Quotas replaces the default for that one user. Deleting the row returns the user to the default. It does not take self-service away. To block one user even when a default or an override exists, ban them from their user page or from the Bans list. A ban leaves the override in place, and lifting the ban restores it.
 
 The quota form has no defaults, so every limit on an override is a choice.
 
