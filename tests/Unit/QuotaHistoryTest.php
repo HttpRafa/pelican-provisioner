@@ -55,23 +55,36 @@ it('names the server, owner, egg, and size in the panel log', function () {
 it('shows that sentence to the quota owner and keeps the old server events', function () {
     $root = dirname(__DIR__, 2);
     $observer = (string) file_get_contents($root.'/src/Observers/RecordQuotaHistory.php');
+    $activity = (string) file_get_contents($root.'/src/Services/OwnerActivity.php');
     $provider = (string) file_get_contents($root.'/src/Providers/PelicanProvisionerServiceProvider.php');
     $provisioner = (string) file_get_contents($root.'/src/Services/ServerProvisioner.php');
     $english = (string) file_get_contents($root.'/lang/en/activity.php');
 
-    expect($observer)->toContain('->subject($owner)')
+    expect($activity)->toContain('->subject($owner)')
+        ->and($activity)->toContain('->actor($actor)')
         ->and($observer)->toContain('QuotaHistory::EVENT')
-        ->and($observer)->toContain('->actor($actor)')
+        ->and($observer)->toContain('QuotaHistory::REMOVED_EVENT')
         ->and($provider)->toContain('RecordQuotaHistory')
+        ->and($provider)->toContain('RecordQuotaBanHistory')
         ->and($english)->toContain(':actor')
         ->and($english)->toContain(':old_cpu')
         ->and($english)->toContain(':new_servers')
+        ->and($english)->toContain('quota_removed')
+        ->and($english)->toContain('quota_ban')
+        ->and($english)->toContain('quota_unban')
         ->and($provisioner)->toContain('ProvisionerLog::created')
         ->and($provisioner)->toContain('ProvisionerLog::denied')
         ->and($provisioner)->toContain('ProvisionerLog::syncFailed')
         ->and($provisioner)->toContain("'server:provisioner.create'")
         ->and($provisioner)->toContain("'server:provisioner.resources'")
         ->and($provisioner)->toContain("'server:provisioner.delete'");
+});
+
+it('names a ban without pretending it changed the limits', function () {
+    expect(QuotaHistory::BAN_EVENT)->toBe('user:provisioner.quota_ban')
+        ->and(QuotaHistory::UNBAN_EVENT)->toBe('user:provisioner.quota_unban')
+        ->and(QuotaHistory::REMOVED_EVENT)->toBe('user:provisioner.quota_removed')
+        ->and(QuotaHistory::notice('  <b>ada</b> '))->toBe(['actor' => 'ada']);
 });
 
 it('describes an access change with its own event and fields', function () {

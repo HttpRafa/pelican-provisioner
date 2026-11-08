@@ -8,6 +8,7 @@ use App\Services\Servers\ServerDeletionService;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\RateLimiter;
 use PelicanProvisioner\Domain\ProvisioningException;
+use PelicanProvisioner\Models\QuotaBan;
 use PelicanProvisioner\Models\ResourceQuota;
 use PelicanProvisioner\Services\ServerProvisioner;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
@@ -133,6 +134,8 @@ function reset_state(array $settings = []): void
     remove_all_servers();
     clear_rate_limits();
     config()->set('pelican-provisioner', [...$GLOBALS['defaultSettings'], ...$settings]);
+
+    QuotaBan::query()->delete();
 
     $alice = User::query()->where('username', 'alice')->firstOrFail();
     ResourceQuota::query()->updateOrCreate(['user_id' => $alice->id], [

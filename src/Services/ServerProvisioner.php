@@ -33,6 +33,7 @@ use PelicanProvisioner\Domain\DeploymentSettings;
 use PelicanProvisioner\Domain\EggAllowlist;
 use PelicanProvisioner\Domain\EggVariableDefinition;
 use PelicanProvisioner\Domain\EnvironmentBuilder;
+use PelicanProvisioner\Domain\Grant;
 use PelicanProvisioner\Domain\InvalidEnvironmentException;
 use PelicanProvisioner\Domain\InvalidResourceAmountException;
 use PelicanProvisioner\Domain\InvalidServerNameException;
@@ -47,7 +48,6 @@ use PelicanProvisioner\Domain\ResourceAmountParser;
 use PelicanProvisioner\Domain\ResourceAmounts;
 use PelicanProvisioner\Domain\ServerName;
 use PelicanProvisioner\Domain\SubmittedVariables;
-use PelicanProvisioner\Models\ResourceQuota;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Throwable;
 
@@ -76,6 +76,7 @@ final class ServerProvisioner
         private readonly UserLock $lock,
         private readonly SettingsRepository $settings,
         private readonly QuotaPolicy $policy,
+        private readonly QuotaAccess $access,
         private readonly EnvironmentBuilder $environment,
         private readonly EggAllowlist $eggs,
         private readonly QuotaAllowlist $allowlist,
@@ -137,12 +138,12 @@ final class ServerProvisioner
                     $this->deny($actor, $locked, 'resize', 'conflict_state');
                 }
 
-                $quota = $this->quotaForUpdate($actor, $locked);
+                $grant = $this->heldGrant($actor, $locked, 'resize');
                 $requested = $this->amounts($cpu, $memory, $disk);
                 $current = new ResourceAmounts((int) $locked->cpu, (int) $locked->memory, (int) $locked->disk);
 
                 $this->policy->assertCanUpdate(
-                    $quota->toQuota(),
+                    $grant->quota,
                     $this->usage->fresh((int) $actor->id),
                     $current,
                     $requested,
@@ -225,8 +226,10 @@ final class ServerProvisioner
                     $this->deny($actor, $locked, 'delete', 'conflict_state');
                 }
 
-                if ($this->readQuota((int) $actor->id) === null) {
-                    $this->deny($actor, $locked, 'delete', 'no_quota');
+                $decision = $this->access->decision((int) $actor->id, fresh: true);
+
+                if (!$decision->allowed()) {
+                    $this->deny($actor, $locked, 'delete', $decision->reason ?? 'no_quota');
                 }
 
                 $this->deletion->handle($locked);
@@ -261,20 +264,21 @@ final class ServerProvisioner
         }
 
         $resolvedEggId = PositiveId::parse($eggId);
-        $quota = $this->readQuota((int) $actor->id);
+        $decision = $this->access->decision((int) $actor->id, fresh: true);
 
-        if (!$quota instanceof ResourceQuota) {
-            $this->logDenied($actor, null, 'create', 'no_quota');
+        if (!$decision->allowed() || !$decision->grant instanceof Grant) {
+            $this->logDenied($actor, null, 'create', $decision->reason ?? 'no_quota');
 
             throw new ProvisioningException(ProvisioningFailure::Forbidden);
         }
 
+        $grant = $decision->grant;
         $eggChoice = $this->allowlist->eggs(
             $settings->allowAllEggs,
             $settings->allowedEggIds,
-            $quota->egg_mode,
-            $quota->allowed_egg_ids,
-            (bool) $quota->allow_all_eggs,
+            $grant->eggMode,
+            $grant->allowedEggIds,
+            $grant->allowAllEggs,
         );
 
         if ($resolvedEggId === null || !$this->eggs->permits($resolvedEggId, $eggChoice->ids, $eggChoice->allowAll, $eggChoice->excludedIds)) {
@@ -284,7 +288,7 @@ final class ServerProvisioner
         }
 
         try {
-            $this->policy->assertCanCreate($quota->toQuota(), $this->usage->fresh((int) $actor->id), $requested);
+            $this->policy->assertCanCreate($grant->quota, $this->usage->fresh((int) $actor->id), $requested);
         } catch (QuotaViolationException) {
             throw new ProvisioningException(ProvisioningFailure::Quota);
         }
@@ -320,7 +324,7 @@ final class ServerProvisioner
             throw new ProvisioningException(ProvisioningFailure::Variables, $detail);
         }
 
-        $allocation = $this->chooseAllocation($actor, $requested, $settings, $quota, $nodeId);
+        $allocation = $this->chooseAllocation($actor, $requested, $settings, $grant, $nodeId);
 
         try {
             $server = $this->creation->handle([
@@ -358,16 +362,16 @@ final class ServerProvisioner
             throw new ProvisioningException(ProvisioningFailure::Unknown);
         }
 
-        $latest = $this->readQuota((int) $actor->id);
+        $latest = $this->access->decision((int) $actor->id, fresh: true);
 
-        if (!$latest instanceof ResourceQuota) {
+        if (!$latest->allowed() || !$latest->grant instanceof Grant) {
             $this->deletion->withForce()->handle($server);
 
             throw new ProvisioningException(ProvisioningFailure::Forbidden);
         }
 
         try {
-            $this->policy->assertWithin($latest->toQuota(), $this->usage->fresh((int) $actor->id));
+            $this->policy->assertWithin($latest->grant->quota, $this->usage->fresh((int) $actor->id));
         } catch (QuotaViolationException) {
             $this->deletion->withForce()->handle($server);
 
@@ -401,7 +405,7 @@ final class ServerProvisioner
         return $server;
     }
 
-    private function chooseAllocation(User $actor, ResourceAmounts $requested, DeploymentSettings $settings, ResourceQuota $quota, mixed $submittedNode): Allocation
+    private function chooseAllocation(User $actor, ResourceAmounts $requested, DeploymentSettings $settings, Grant $grant, mixed $submittedNode): Allocation
     {
         $tagged = $this->nodes
             ->handle($requested->memory, $requested->disk, $requested->cpu, $settings->tags)
@@ -409,15 +413,15 @@ final class ServerProvisioner
             ->map(fn (mixed $id): int => (int) $id)
             ->values()
             ->all();
-        $selected = QuotaAllowlist::ids($quota->allowed_node_ids);
-        $mode = AccessMode::parse($quota->node_mode);
+        $selected = QuotaAllowlist::ids($grant->allowedNodeIds);
+        $mode = AccessMode::parse($grant->nodeMode);
 
         if ($mode === AccessMode::Additive || $mode === AccessMode::Overwrite) {
             $selected = $this->viableNodeIds($selected, $requested);
         }
 
-        $resolved = $this->allowlist->nodes($tagged, $quota->node_mode, $selected);
-        $placement = $this->allowlist->placement($submittedNode, $resolved, $quota->node_mode);
+        $resolved = $this->allowlist->nodes($tagged, $grant->nodeMode, $selected);
+        $placement = $this->allowlist->placement($submittedNode, $resolved, $grant->nodeMode);
 
         if ($placement->rejected) {
             $this->logDenied($actor, null, 'create', 'node_not_allowed');
@@ -521,27 +525,15 @@ final class ServerProvisioner
         return $this->subdomainColumn ??= Schema::hasColumn('servers', 'subdomain_limit');
     }
 
-    private function readQuota(int $userId): ?ResourceQuota
+    private function heldGrant(User $actor, Server $server, string $action): Grant
     {
-        return ResourceQuota::query()
-            ->where('user_id', $userId)
-            ->useWritePdo()
-            ->first(['id', 'user_id', 'cpu', 'memory', 'disk', 'server_limit', 'egg_mode', 'node_mode', 'allow_all_eggs', 'allowed_egg_ids', 'allowed_node_ids']);
-    }
+        $decision = $this->access->decision((int) $actor->id, lock: true, fresh: true);
 
-    private function quotaForUpdate(User $actor, Server $server): ResourceQuota
-    {
-        /** @var ResourceQuota|null $quota */
-        $quota = ResourceQuota::query()
-            ->where('user_id', $actor->id)
-            ->lockForUpdate()
-            ->first(['id', 'user_id', 'cpu', 'memory', 'disk', 'server_limit']);
-
-        if (!$quota instanceof ResourceQuota) {
-            $this->deny($actor, $server, 'resize', 'no_quota');
+        if (!$decision->allowed() || !$decision->grant instanceof Grant) {
+            $this->deny($actor, $server, $action, $decision->reason ?? 'no_quota');
         }
 
-        return $quota;
+        return $decision->grant;
     }
 
     private function amounts(mixed $cpu, mixed $memory, mixed $disk): ResourceAmounts

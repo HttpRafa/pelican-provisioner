@@ -75,9 +75,9 @@ it('is applied when a server is created, not only in the form', function () {
     $provisioner = (string) file_get_contents($root.'/src/Services/ServerProvisioner.php');
     $page = (string) file_get_contents($root.'/src/Filament/App/Pages/CreateServerPage.php');
 
-    expect($provisioner)->toContain('egg_mode')
-        ->and($provisioner)->toContain('node_mode')
-        ->and($provisioner)->toContain('allow_all_eggs')
+    expect($provisioner)->toContain('eggMode')
+        ->and($provisioner)->toContain('nodeMode')
+        ->and($provisioner)->toContain('allowAllEggs')
         ->and($provisioner)->toContain('$this->allowlist->eggs(')
         ->and($provisioner)->toContain('$this->allowlist->placement(')
         ->and($page)->toContain('->map(fn (Node $node): int => (int) $node->id)')

@@ -31,6 +31,7 @@ use Filament\Support\Facades\FilamentView;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\HtmlString;
 use PelicanProvisioner\Domain\AccessMode;
+use PelicanProvisioner\Domain\Grant;
 use PelicanProvisioner\Domain\InvalidResourceAmountException;
 use PelicanProvisioner\Domain\PositiveId;
 use PelicanProvisioner\Domain\ProvisioningException;
@@ -39,7 +40,6 @@ use PelicanProvisioner\Domain\QuotaPolicy;
 use PelicanProvisioner\Domain\ResourceAmountParser;
 use PelicanProvisioner\Domain\ResourceAmounts;
 use PelicanProvisioner\Filament\App\Widgets\QuotaOverview;
-use PelicanProvisioner\Models\ResourceQuota;
 use PelicanProvisioner\Services\QuotaAccess;
 use PelicanProvisioner\Services\ServerProvisioner;
 use PelicanProvisioner\Services\SettingsRepository;
@@ -275,15 +275,15 @@ class CreateServerPage extends Page
         $quota = $this->quota();
         $actor = user();
 
-        if (!$quota instanceof ResourceQuota || !$actor instanceof User) {
+        if (!$quota instanceof Grant || !$actor instanceof User) {
             return ['min' => 1, 'max' => 0];
         }
 
         $usage = app(UsageQuery::class)->forOwner((int) $actor->id);
         $limit = match ($resource) {
-            'cpu' => $quota->cpu,
-            'memory' => $quota->memory,
-            default => $quota->disk,
+            'cpu' => $quota->quota->cpu,
+            'memory' => $quota->quota->memory,
+            default => $quota->quota->disk,
         };
         $used = match ($resource) {
             'cpu' => $usage->cpu,
@@ -338,9 +338,9 @@ class CreateServerPage extends Page
         $choice = (new QuotaAllowlist())->eggs(
             $settings->allowAllEggs,
             $settings->allowedEggIds,
-            $quota?->egg_mode,
-            $quota?->allowed_egg_ids,
-            (bool) $quota?->allow_all_eggs,
+            $quota?->eggMode,
+            $quota?->allowedEggIds,
+            (bool) $quota?->allowAllEggs,
         );
 
         if (!$settings->createUsable || (!$choice->allowAll && $choice->ids === [])) {
@@ -413,7 +413,7 @@ class CreateServerPage extends Page
         $quota = $this->quota();
         $settings = app(SettingsRepository::class)->current();
 
-        if (!$quota instanceof ResourceQuota || !$settings->createUsable || !$this->restrictsNodes()) {
+        if (!$quota instanceof Grant || !$settings->createUsable || !$this->restrictsNodes()) {
             return [];
         }
 
@@ -433,8 +433,8 @@ class CreateServerPage extends Page
             $requested->cpu,
             $settings->tags,
         )->pluck('id')->map(fn (mixed $id): int => (int) $id)->values()->all();
-        $selected = QuotaAllowlist::ids($quota->allowed_node_ids);
-        $mode = AccessMode::parse($quota->node_mode);
+        $selected = QuotaAllowlist::ids($quota->allowedNodeIds);
+        $mode = AccessMode::parse($quota->nodeMode);
 
         if (($mode === AccessMode::Additive || $mode === AccessMode::Overwrite) && $selected !== []) {
             $selected = Node::query()
@@ -446,7 +446,7 @@ class CreateServerPage extends Page
                 ->all();
         }
 
-        $allowed = (new QuotaAllowlist())->nodes($tagged, $quota->node_mode, $selected);
+        $allowed = (new QuotaAllowlist())->nodes($tagged, $quota->nodeMode, $selected);
 
         if ($allowed === []) {
             return [];
@@ -459,10 +459,10 @@ class CreateServerPage extends Page
     {
         $quota = $this->quota();
 
-        return $quota instanceof ResourceQuota && AccessMode::parse($quota->node_mode) !== null;
+        return $quota instanceof Grant && AccessMode::parse($quota->nodeMode) !== null;
     }
 
-    private function quota(): ?ResourceQuota
+    private function quota(): ?Grant
     {
         $actor = user();
 
@@ -470,7 +470,7 @@ class CreateServerPage extends Page
             return null;
         }
 
-        return app(QuotaAccess::class)->quotaFor((int) $actor->id);
+        return app(QuotaAccess::class)->grant((int) $actor->id);
     }
 
     private function memorySuffix(): string

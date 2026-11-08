@@ -16,11 +16,11 @@ use Filament\Schemas\Schema;
 use Filament\Support\Facades\FilamentView;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
+use PelicanProvisioner\Domain\Grant;
 use PelicanProvisioner\Domain\ProvisioningException;
 use PelicanProvisioner\Domain\QuotaPolicy;
 use PelicanProvisioner\Domain\ResourceAmounts;
 use PelicanProvisioner\Filament\App\Widgets\QuotaOverview;
-use PelicanProvisioner\Models\ResourceQuota;
 use PelicanProvisioner\Services\QuotaAccess;
 use PelicanProvisioner\Services\ServerProvisioner;
 use PelicanProvisioner\Services\SettingsRepository;
@@ -219,9 +219,9 @@ class ServerResourcePage extends ServerFormPage
     private function bounds(string $resource): array
     {
         $server = $this->getRecord();
-        $quota = app(QuotaAccess::class)->quotaFor((int) $server->owner_id);
+        $quota = app(QuotaAccess::class)->grant((int) $server->owner_id);
 
-        if (!$quota instanceof ResourceQuota) {
+        if (!$quota instanceof Grant) {
             return ['min' => 1, 'max' => 0];
         }
 
@@ -229,9 +229,9 @@ class ServerResourcePage extends ServerFormPage
             new ResourceAmounts((int) $server->cpu, (int) $server->memory, (int) $server->disk),
         );
         $limit = match ($resource) {
-            'cpu' => (int) $quota->cpu,
-            'memory' => (int) $quota->memory,
-            default => (int) $quota->disk,
+            'cpu' => $quota->quota->cpu,
+            'memory' => $quota->quota->memory,
+            default => $quota->quota->disk,
         };
         $used = match ($resource) {
             'cpu' => $usage->cpu,
