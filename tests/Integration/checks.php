@@ -375,6 +375,24 @@ Filament::setCurrentPanel(Filament::getPanel('admin'));
 check('admin quota list', outcome(fn () => Livewire::actingAs($admin)->test(ManageResourceQuotas::class)->call('loadTable')), 'allowed');
 check('quota section on the admin user page', outcome(fn () => Livewire::actingAs($admin)->test(ResourceQuotaRelationManager::class, ['ownerRecord' => $alice, 'pageClass' => EditUser::class])), 'allowed');
 
+section('Quota history for the owner');
+
+reset_state();
+as_user('admin');
+$bobQuota = ResourceQuota::query()->create(['user_id' => $bob->id, 'cpu' => 100, 'memory' => 1024, 'disk' => 2048, 'server_limit' => 1]);
+$bobQuota->forceFill(['cpu' => 150])->save();
+$entries = User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota')->orderBy('id')->get();
+check('the owner sees an entry for the new and the changed quota', $entries->count(), 2);
+check('the change names the admin as actor', [$entries->last()?->actor_id, $entries->last()?->properties?->get('actor')], [$admin->id, 'admin']);
+check('with the old and new CPU', [(int) $entries->last()?->properties?->get('old_cpu'), (int) $entries->last()?->properties?->get('new_cpu')], [100, 150]);
+check('and a translated sentence', str_contains((string) $entries->last()?->getLabel(), 'changed the quota from'), true);
+$bobQuota->delete();
+check('deleting the quota adds an entry too', User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota')->count(), 3);
+auth()->forgetUser();
+ResourceQuota::query()->create(['user_id' => $bob->id, 'cpu' => 1, 'memory' => 1, 'disk' => 1, 'server_limit' => 1])->delete();
+check('a change without a signed-in user is credited to the system', User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota')->latest('id')->first()?->properties?->get('actor'), 'system');
+reset_state();
+
 section('Audit trail');
 
 reset_state(['allowed_eggs' => $usableEggs, 'can_users_delete_servers' => 'true']);
