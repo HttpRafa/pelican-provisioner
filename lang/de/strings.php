@@ -69,6 +69,7 @@ return [
         'settings_not_written' => 'Korrigiere die Werte. Es wurde nichts geschrieben.',
         'settings_write_failed' => 'Die Einstellungen konnten nicht in die Umgebungsdatei geschrieben werden. Bitte die Panel-Logs prüfen.',
         'settings_invalid_stored' => 'Die gespeicherten Plugin-Einstellungen sind ungültig. Erstellen bleibt aus, bis eine gültige Konfiguration gespeichert wird.',
+        'default_quota_invalid_stored' => 'Das gespeicherte Standardkontingent ist ungültig. Neue Konten bekommen kein Kontingent, bis es erneut gespeichert wird. Bestehende Kontingente funktionieren weiter.',
     ],
     'settings' => [
         'limits' => 'Funktionslimits',

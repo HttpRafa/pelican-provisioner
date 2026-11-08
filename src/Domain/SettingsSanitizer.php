@@ -149,8 +149,7 @@ final class SettingsSanitizer
             && $allowAll !== null
             && $tags !== null
             && $ports !== null
-            && $eggs !== null
-            && $defaultQuota !== false;
+            && $eggs !== null;
 
         return new DeploymentSettings(
             createUsable: $usable,
@@ -165,11 +164,12 @@ final class SettingsSanitizer
             allowedEggIds: $eggs ?? [],
             allowAllEggs: $allowAll ?? false,
             defaultQuota: $defaultQuota instanceof Quota ? $defaultQuota : null,
+            defaultQuotaInvalid: $defaultQuota === false,
         );
     }
 
     /**
-     * False means the stored default is corrupt. Null means no default is saved.
+     * False means the stored default is corrupt. Null means no default is saved. A corrupt default only stops new accounts from getting a quota; it does not stop anyone who already has one.
      *
      * @param  array<string, mixed>  $config
      */

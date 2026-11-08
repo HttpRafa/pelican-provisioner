@@ -108,10 +108,11 @@ it('leaves creation on when no default quota is saved', function () {
     $settings = sanitizer()->fromConfig(storedSettings());
 
     expect($settings->createUsable)->toBeTrue()
+        ->and($settings->defaultQuotaInvalid)->toBeFalse()
         ->and($settings->defaultQuota)->toBeNull();
 });
 
-it('turns creation off when the default quota is corrupt', function () {
+it('keeps creation on when only the default quota is corrupt', function () {
     $settings = sanitizer()->fromConfig(storedSettings() + [
         'default_cpu' => '100',
         'default_memory' => '',
@@ -119,7 +120,8 @@ it('turns creation off when the default quota is corrupt', function () {
         'default_server_limit' => '1',
     ]);
 
-    expect($settings->createUsable)->toBeFalse()
+    expect($settings->createUsable)->toBeTrue()
+        ->and($settings->defaultQuotaInvalid)->toBeTrue()
         ->and($settings->defaultQuota)->toBeNull()
         ->and(fn () => sanitizer()->toEnvironment([
             'database_limit' => '0',
