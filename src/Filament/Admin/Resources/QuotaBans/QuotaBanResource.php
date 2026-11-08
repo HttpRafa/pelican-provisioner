@@ -98,6 +98,7 @@ class QuotaBanResource extends Resource
                 DeleteAction::make()
                     ->label(trans('pelican-provisioner::strings.admin.lift_ban'))
                     ->modalHeading(trans('pelican-provisioner::strings.admin.lift_ban'))
+                    ->modalSubmitActionLabel(trans('pelican-provisioner::strings.admin.lift_ban'))
                     ->modalDescription(trans('pelican-provisioner::strings.admin.lift_ban_help')),
             ])
             ->toolbarActions([
