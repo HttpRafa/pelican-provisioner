@@ -511,8 +511,9 @@ check('and a translated sentence', str_contains((string) $entries->last()?->getL
 $bobQuota->delete();
 check('deleting the override adds its own entry', User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota_removed')->count(), 1);
 check('and leaves the edit entries in place', User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota')->count(), 2);
+$bansBefore = User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota_ban')->count();
 $ban = QuotaBan::query()->create(['user_id' => $bob->id]);
-check('the owner sees the ban', User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota_ban')->count(), 1);
+check('the owner sees the ban', User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota_ban')->count(), $bansBefore + 1);
 $ban->delete();
 check('and the unban', User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota_unban')->count(), 1);
 auth()->forgetUser();
