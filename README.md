@@ -18,7 +18,7 @@ Rebuild the zip from a git checkout (PHP with the zip extension):
 composer build
 ```
 
-The archive is written to `dist/` and is not committed. Uninstalling the plugin rolls back its migration and deletes every quota.
+The archive is written to `dist/` and is not committed. Uninstalling the plugin rolls back its migration and deletes every override and ban.
 
 ## Configure
 
@@ -30,11 +30,13 @@ A quota can change those eggs and nodes for one user. Leave the mode unset to ke
 
 An empty port list uses any free allocation on a matching node. Creation fails if none is free.
 
-Create a quota for each user who should provision servers. Root administrators can do that immediately. Other roles need the Quota permissions. They cannot manage a root administrator's quota, and they only see email addresses if they can also list users.
+Root administrators can manage overrides and bans immediately. Other roles need the Quota and Quota ban permissions. They cannot manage a root administrator's override or ban, and they only see email addresses if they can also list users.
 
-You can also save one default CPU, memory, disk, and server limit in the plugin settings. A user account created after that gets a quota from those values. Accounts that already exist are left alone. Leave the default empty and a new user still has no quota until you create one. An empty default is not unlimited. CPU, memory, and disk in the default must be above 0, because every new account gets it, including self-registered ones.
+Save one default CPU, memory, disk, and server limit in the plugin settings. Every user without an override uses it, including accounts that already exist and accounts that register themselves. Leave the default empty and those users cannot create servers. An empty default is not unlimited. CPU, memory, and disk in the default must be above 0. A server limit of 0 means no cap on how many servers they can own.
 
-The quota form has no defaults, so every limit is a choice.
+A row in Quotas replaces the default for that one user. Deleting the row returns the user to the default. It does not take self-service away. To block one user even when a default or an override exists, ban them. A ban leaves the override in place, and lifting the ban restores it.
+
+The quota form has no defaults, so every limit on an override is a choice.
 
 - `0` on CPU, memory, or disk means that resource is unlimited. A server created with `0` does not count against the node's capacity. A finite quota cannot create an unlimited server.
 - `0` on the server limit means there is no cap on how many servers the user can own.
