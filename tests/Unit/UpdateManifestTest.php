@@ -9,10 +9,11 @@ it('publishes one wildcard manifest for the release zip', function () {
     $plugin = json_decode((string) file_get_contents($root.'/plugin.json'), true, flags: JSON_THROW_ON_ERROR);
     $workflow = (string) file_get_contents($root.'/.github/workflows/release.yml');
 
-    expect(UpdateManifest::document('0.4.0'))->toBe([
+    expect(UpdateManifest::document('0.4.0', 'abc123'))->toBe([
         '*' => [
             'version' => '0.4.0',
             'download_url' => 'https://github.com/HttpRafa/pelican-provisioner/releases/download/v0.4.0/pelican-provisioner-0.4.0.zip',
+            'sha256' => 'abc123',
         ],
     ])
         ->and($plugin['version'])->toBe('0.4.0')

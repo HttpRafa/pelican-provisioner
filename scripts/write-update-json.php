@@ -24,10 +24,19 @@ if (!is_dir($directory) && !mkdir($directory, recursive: true) && !is_dir($direc
     exit(1);
 }
 
+$archive = $directory.'/pelican-provisioner-'.$version.'.zip';
+$sha256 = is_file($archive) ? hash_file('sha256', $archive) : false;
+
+if ($sha256 === false) {
+    fwrite(STDERR, "Build $archive first.\n");
+
+    exit(1);
+}
+
 $manifest = $directory.'/update.json';
 $notes = $directory.'/release-notes.md';
 
-file_put_contents($manifest, json_encode(UpdateManifest::document($version), JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n");
+file_put_contents($manifest, json_encode(UpdateManifest::document($version, $sha256), JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n");
 file_put_contents($notes, "Uninstall Pelican Provisioner before installing this zip. Uninstall drops the quota and ban tables. The new install starts empty.\n");
 
 echo $manifest."\n";
