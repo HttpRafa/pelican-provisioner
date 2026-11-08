@@ -7,6 +7,7 @@ namespace PelicanProvisioner\Filament\App\Widgets;
 use App\Models\User;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
+use PelicanProvisioner\Domain\Grant;
 use PelicanProvisioner\Domain\QuotaPolicy;
 use PelicanProvisioner\Services\QuotaAccess;
 use PelicanProvisioner\Services\UsageQuery;
@@ -23,15 +24,15 @@ class QuotaOverview extends StatsOverviewWidget
             return [];
         }
 
-        $quota = app(QuotaAccess::class)->quotaFor((int) $actor->id);
+        $quota = app(QuotaAccess::class)->grant((int) $actor->id);
 
-        if ($quota === null) {
+        if (!$quota instanceof Grant) {
             return [];
         }
 
         $usage = app(UsageQuery::class)->forOwner((int) $actor->id);
         $policy = app(QuotaPolicy::class);
-        $domain = $quota->toQuota();
+        $domain = $quota->quota;
         $suffix = config('panel.use_binary_prefix') ? ' MiB' : ' MB';
 
         return [

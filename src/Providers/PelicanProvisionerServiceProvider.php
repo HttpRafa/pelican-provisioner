@@ -21,15 +21,16 @@ use Illuminate\Translation\Translator;
 use PelicanProvisioner\Filament\Admin\Resources\Users\RelationManagers\ResourceQuotaRelationManager;
 use PelicanProvisioner\Filament\App\Widgets\QuotaOverview;
 use PelicanProvisioner\Filament\Components\Actions\CreateServerAction;
+use PelicanProvisioner\Models\QuotaBan;
 use PelicanProvisioner\Models\ResourceQuota;
+use PelicanProvisioner\Observers\RecordQuotaBanHistory;
 use PelicanProvisioner\Observers\RecordQuotaHistory;
+use PelicanProvisioner\Policies\QuotaBanPolicy;
 use PelicanProvisioner\Policies\ResourceQuotaPolicy;
-use PelicanProvisioner\Services\NewUserQuota;
 use PelicanProvisioner\Services\QuotaAccess;
 use PelicanProvisioner\Services\ServerProvisioner;
 use PelicanProvisioner\Services\StrictDaemonServerRepository;
 use PelicanProvisioner\Services\UsageQuery;
-use Throwable;
 
 /**
  * Usage and access are scoped so Octane does not keep them for the next request. The policy is registered here because the panel does not discover plugin policies on its own. Only this plugin's provisioner gets the strict node client, so deleting a server from the admin area behaves as it always did.
@@ -50,30 +51,26 @@ class PelicanProvisionerServiceProvider extends ServiceProvider
             ));
 
         Gate::policy(ResourceQuota::class, ResourceQuotaPolicy::class);
+        Gate::policy(QuotaBan::class, QuotaBanPolicy::class);
 
         UserResource::registerCustomRelations(ResourceQuotaRelationManager::class);
         ListServers::registerCustomHeaderWidgets(HeaderWidgetPosition::Before, QuotaOverview::class);
         ListServers::registerCustomHeaderActions(HeaderActionPosition::Before, CreateServerAction::make());
         Role::registerCustomDefaultPermissions('provisionerQuota');
         Role::registerCustomModelIcon('provisionerQuota', 'tabler-cube-plus');
+        Role::registerCustomDefaultPermissions('provisionerQuotaBan');
+        Role::registerCustomModelIcon('provisionerQuotaBan', 'tabler-ban');
     }
 
     public function boot(): void
     {
-        User::created(static function (User $user): void {
-            try {
-                app(NewUserQuota::class)->assign((int) $user->id);
-            } catch (Throwable $exception) {
-                report($exception);
-            }
-        });
-
         User::resolveRelationUsing(
             'provisionerQuota',
             fn (User $user) => $user->hasOne(ResourceQuota::class, 'user_id'),
         );
 
         ResourceQuota::observe(RecordQuotaHistory::class);
+        QuotaBan::observe(RecordQuotaBanHistory::class);
         $this->registerQuotaHistoryTranslations();
     }
 

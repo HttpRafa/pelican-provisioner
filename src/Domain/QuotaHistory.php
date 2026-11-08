@@ -11,7 +11,13 @@ final class QuotaHistory
 {
     public const string EVENT = 'user:provisioner.quota';
 
+    public const string REMOVED_EVENT = 'user:provisioner.quota_removed';
+
     public const string ACCESS_EVENT = 'user:provisioner.quota_access';
+
+    public const string BAN_EVENT = 'user:provisioner.quota_ban';
+
+    public const string UNBAN_EVENT = 'user:provisioner.quota_unban';
 
     /** Changing one of these writes a limits entry. */
     public const array LIMIT_FIELDS = ['cpu', 'memory', 'disk', 'server_limit'];
@@ -46,6 +52,14 @@ final class QuotaHistory
             'actor' => self::actor($actor),
             'eggs' => $eggs,
             'nodes' => $nodes,
+        ];
+    }
+
+    /** @return array<string, string> */
+    public static function notice(?string $actor): array
+    {
+        return [
+            'actor' => self::actor($actor),
         ];
     }
 
