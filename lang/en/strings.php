@@ -101,7 +101,7 @@ return [
     'admin' => [
         'empty' => 'No overrides yet. Users without a row use the saved default. Add an override to give one user different limits.',
         'empty_user' => 'This user has no override. They use the saved default when one is set, and cannot create servers when it is empty.',
-        'using_default' => 'This user has no override. They use the default: :cpu% CPU, :memory memory, :disk disk, :servers servers.',
+        'using_default' => 'This user has no override. They use the default: :cpu% CPU, :memory memory, :disk disk. Server limit: :servers.',
         'delete_override' => 'This user returns to the saved default. If no default is saved, they cannot create servers.',
         'bans' => 'Bans',
         'ban' => 'Ban',

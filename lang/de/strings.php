@@ -101,7 +101,7 @@ return [
     'admin' => [
         'empty' => 'Noch keine Ausnahmen. Benutzer ohne Zeile nutzen das Standardkontingent. Lege eine Ausnahme an, um einer Person andere Limits zu geben.',
         'empty_user' => 'Diese Person hat keine Ausnahme. Ist ein Standardkontingent gespeichert, gilt das. Ist es leer, kann sie keine Server erstellen.',
-        'using_default' => 'Diese Person hat keine Ausnahme. Es gilt das Standardkontingent: :cpu% CPU, :memory RAM, :disk Speicherplatz, :servers Server.',
+        'using_default' => 'Diese Person hat keine Ausnahme. Es gilt das Standardkontingent: :cpu% CPU, :memory RAM, :disk Speicherplatz. Serverlimit: :servers.',
         'delete_override' => 'Diese Person nutzt wieder das Standardkontingent. Ist keines gespeichert, kann sie keine Server erstellen.',
         'bans' => 'Sperren',
         'ban' => 'Sperre',
