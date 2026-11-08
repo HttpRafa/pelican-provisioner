@@ -587,6 +587,18 @@ $held->release();
 check('a lock held by another request reports busy', $contended, 'busy');
 check('a free lock runs the callback', $lock->run(987656, fn (): string => 'ran'), 'ran');
 
+section('Installing over an older version');
+
+reset_state();
+$olderRow = ResourceQuota::query()->where('user_id', $alice->id)->value('id');
+Schema::drop('provisioner_quota_bans');
+Schema::table('provisioner_quotas', fn (Blueprint $table) => $table->dropColumn(['egg_mode', 'node_mode', 'allow_all_eggs', 'allowed_egg_ids', 'allowed_node_ids']));
+$migration = require dirname(__DIR__, 2).'/database/migrations/2026_11_08_000000_create_provisioner_tables.php';
+check('the migration runs over the older tables', outcome(fn () => $migration->up()), 'allowed');
+check('and adds what they lack', [Schema::hasTable('provisioner_quota_bans'), Schema::hasColumns('provisioner_quotas', ['egg_mode', 'node_mode', 'allow_all_eggs', 'allowed_egg_ids', 'allowed_node_ids'])], [true, true]);
+check('and keeps the rows as overrides', ResourceQuota::query()->where('user_id', $alice->id)->value('id'), $olderRow);
+check('running it again changes nothing', outcome(fn () => $migration->up()), 'allowed');
+
 section('Migration guide');
 
 reset_state();
