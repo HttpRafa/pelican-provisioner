@@ -21,3 +21,9 @@ it('publishes one wildcard manifest for the release zip', function () {
         ->and($workflow)->toContain('scripts/write-update-json.php')
         ->and($workflow)->toContain('dist/update.json');
 });
+
+it('only tells the release that replaced the tables to uninstall', function () {
+    expect(UpdateManifest::releaseNotes('0.4.0'))->toContain('Uninstall')
+        ->and(UpdateManifest::releaseNotes('0.4.1'))->not->toContain('Uninstall')
+        ->and(UpdateManifest::releaseNotes('1.0.0'))->not->toContain('Uninstall');
+});
