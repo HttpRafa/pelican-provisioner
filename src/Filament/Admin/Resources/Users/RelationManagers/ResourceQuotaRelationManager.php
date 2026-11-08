@@ -76,6 +76,7 @@ class ResourceQuotaRelationManager extends RelationManager
             ])
             ->toolbarActions([
                 CreateAction::make()
+                    ->createAnother(false)
                     ->visible(fn (): bool => !$this->hasOverride())
                     ->authorize(fn (): bool => $this->canManageOwner('create', ResourceQuota::class)),
                 $this->banAction(),
@@ -185,7 +186,7 @@ class ResourceQuotaRelationManager extends RelationManager
             'cpu' => $default->cpu,
             'memory' => $default->memory,
             'disk' => $default->disk,
-            'servers' => $default->serverLimit ?? 0,
+            'servers' => $default->serverCap() ?? trans('pelican-provisioner::strings.no_limit'),
         ]);
     }
 
