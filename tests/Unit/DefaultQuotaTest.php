@@ -62,15 +62,3 @@ it('uses the same amount checks as a quota an administrator types in', function 
         ->and(fn () => QuotaLimits::parse('1.5'))->toThrow(InvalidResourceAmountException::class)
         ->and(fn () => QuotaLimits::parse('01'))->toThrow(InvalidResourceAmountException::class);
 });
-
-it('applies that default when a user account is created', function () {
-    $root = dirname(__DIR__, 2);
-    $provider = (string) file_get_contents($root.'/src/Providers/PelicanProvisionerServiceProvider.php');
-    $assigner = (string) file_get_contents($root.'/src/Services/NewUserQuota.php');
-
-    expect($provider)->toContain('User::created')
-        ->and($provider)->toContain('NewUserQuota')
-        ->and($assigner)->toContain('DefaultQuota::parse')
-        ->and($assigner)->toContain('firstOrCreate')
-        ->and($assigner)->toContain("'user_id' => \$userId");
-});

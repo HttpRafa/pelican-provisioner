@@ -33,6 +33,7 @@ use PelicanProvisioner\Filament\Admin\Resources\ResourceQuotas\ResourceQuotaReso
 use PelicanProvisioner\Filament\Admin\Resources\Users\RelationManagers\ResourceQuotaRelationManager;
 use PelicanProvisioner\Filament\App\Pages\CreateServerPage;
 use PelicanProvisioner\Filament\Server\Pages\ServerResourcePage;
+use PelicanProvisioner\Models\QuotaBan;
 use PelicanProvisioner\Models\ResourceQuota;
 use PelicanProvisioner\PelicanProvisionerPlugin;
 use PelicanProvisioner\Services\QuotaAccess;
@@ -360,24 +361,43 @@ app()->loadEnvironmentFrom('.env.does-not-exist');
 check('a failed write is reported instead of thrown', outcome(fn () => $plugin->saveSettings($form)), 'allowed');
 app()->loadEnvironmentFrom($original);
 
-section('Default quota for new accounts');
+section('Default quota');
 
 $default = ['default_cpu' => '150', 'default_memory' => '1024', 'default_disk' => '4096', 'default_server_limit' => '2'];
-$limits = fn (?ResourceQuota $quota): ?array => $quota ? [$quota->cpu, $quota->memory, $quota->disk, $quota->server_limit] : null;
 
 reset_state(['allowed_eggs' => $usableEggs] + $default);
 $newcomer = app(UserCreationService::class)->handle(['email' => 'newcomer@integration.test', 'username' => 'newcomer', 'password' => Str::random(32)]);
-check('a new account gets the saved default', $limits(ResourceQuota::query()->where('user_id', $newcomer->id)->first()), [150, 1024, 4096, 2]);
+check('a new account stores no override', ResourceQuota::query()->where('user_id', $newcomer->id)->exists(), false);
 as_user('newcomer');
-check('and can create a server with it', outcome(fn () => create_server('newcomer-server', $allowedEgg)), 'allowed');
+check('and can create a server from the default', outcome(fn () => create_server('newcomer-server', $allowedEgg)), 'allowed');
 Artisan::call('p:user:make', ['--email' => 'cli@integration.test', '--username' => 'cliuser', '--password' => Str::random(32), '--admin' => 0]);
 $cliUser = User::query()->where('username', 'cliuser')->firstOrFail();
-check('an account made on the command line gets it too', $limits(ResourceQuota::query()->where('user_id', $cliUser->id)->first()), [150, 1024, 4096, 2]);
-check('an account that already existed is left alone', ResourceQuota::query()->where('user_id', $bob->id)->exists(), false);
+check('an account made on the command line stores no override', ResourceQuota::query()->where('user_id', $cliUser->id)->exists(), false);
+as_user('cliuser');
+check('and can create from the default too', outcome(fn () => create_server('cli-server', $allowedEgg)), 'allowed');
+check('an account that already existed stores no override', ResourceQuota::query()->where('user_id', $bob->id)->exists(), false);
+as_user('bob');
+check('and can create from the default', outcome(fn () => create_server('bob-default', $allowedEgg)), 'allowed');
 
-reset_state();
+reset_state(['allowed_eggs' => $usableEggs]);
 $plain = app(UserCreationService::class)->handle(['email' => 'plain@integration.test', 'username' => 'plainuser', 'password' => Str::random(32)]);
-check('with no saved default a new account gets no quota', ResourceQuota::query()->where('user_id', $plain->id)->exists(), false);
+check('with no saved default a new account stores no override', ResourceQuota::query()->where('user_id', $plain->id)->exists(), false);
+as_user('plainuser');
+check('and cannot create', outcome(fn () => create_server('plain-server', $allowedEgg)), 'forbidden');
+
+reset_state(['allowed_eggs' => $usableEggs] + $default);
+QuotaBan::query()->create(['user_id' => $bob->id]);
+as_user('bob');
+check('a ban blocks the default', outcome(fn () => create_server('bob-banned', $allowedEgg)), 'forbidden');
+QuotaBan::query()->create(['user_id' => $alice->id]);
+as_user('alice');
+check('a ban blocks an override', outcome(fn () => create_server('alice-banned', $allowedEgg)), 'forbidden');
+QuotaBan::query()->where('user_id', $alice->id)->delete();
+as_user('alice');
+check('lifting the ban restores the override', outcome(fn () => create_server('alice-restored', $allowedEgg)), 'allowed');
+ResourceQuota::query()->where('user_id', $alice->id)->delete();
+as_user('alice');
+check('deleting an override falls back to the default', outcome(fn () => create_server('alice-fallback', $allowedEgg)), 'allowed');
 
 reset_state();
 foreach (['newcomer', 'cliuser', 'plainuser'] as $username) {
@@ -489,7 +509,12 @@ check('the change names the admin as actor', [$entries->last()?->actor_id, $entr
 check('with the old and new CPU', [(int) $entries->last()?->properties?->get('old_cpu'), (int) $entries->last()?->properties?->get('new_cpu')], [100, 150]);
 check('and a translated sentence', str_contains((string) $entries->last()?->getLabel(), 'changed the quota from'), true);
 $bobQuota->delete();
-check('deleting the quota adds an entry too', User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota')->count(), 3);
+check('deleting the override adds its own entry', User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota_removed')->count(), 1);
+check('and leaves the edit entries in place', User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota')->count(), 2);
+$ban = QuotaBan::query()->create(['user_id' => $bob->id]);
+check('the owner sees the ban', User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota_ban')->count(), 1);
+$ban->delete();
+check('and the unban', User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota_unban')->count(), 1);
 auth()->forgetUser();
 ResourceQuota::query()->create(['user_id' => $bob->id, 'cpu' => 1, 'memory' => 1, 'disk' => 1, 'server_limit' => 1])->delete();
 check('a change without a signed-in user is credited to the system', User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota')->latest('id')->first()?->properties?->get('actor'), 'system');
