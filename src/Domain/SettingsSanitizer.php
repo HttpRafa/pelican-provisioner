@@ -169,7 +169,7 @@ final class SettingsSanitizer
     }
 
     /**
-     * False means the stored default is corrupt. Null means no default is saved. A corrupt default only stops new accounts from getting a quota; it does not stop anyone who already has one.
+     * False means the stored default is corrupt. Null means no default is saved. A corrupt default grants nothing to users without an override; users with an override keep working.
      *
      * @param  array<string, mixed>  $config
      */

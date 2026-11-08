@@ -7,7 +7,7 @@ namespace PelicanProvisioner\Domain;
 /**
  * A saved default is four amounts. All four blank means no default is saved. A missing default is not a quota of zeros.
  *
- * CPU, memory, and disk must be above 0. The default is handed to every account created later, including self-registered ones, and an unlimited server is not counted against node capacity. Unlimited stays possible on a quota an administrator gives one user. A server limit of 0 is allowed, because the finite resources still cap what those servers can use.
+ * CPU, memory, and disk must be above 0. The default applies to every user without an override, including self-registered accounts, and an unlimited server is not counted against node capacity. Unlimited stays possible on a quota an administrator gives one user. A server limit of 0 is allowed, because the finite resources still cap what those servers can use.
  */
 final class DefaultQuota
 {
