@@ -327,7 +327,8 @@ class ResourceQuotaResource extends Resource
 
     public static function amountRule(): Closure
     {
-        return function (string $attribute, mixed $value, Closure $fail): void {
+        // Filament evaluates a rule closure while building validation. The inner closure is the Laravel rule, which receives $attribute itself.
+        return fn (): Closure => function (string $attribute, mixed $value, Closure $fail): void {
             try {
                 QuotaLimits::parse($value);
             } catch (InvalidResourceAmountException) {
@@ -338,7 +339,7 @@ class ResourceQuotaResource extends Resource
 
     private static function modeRule(): Closure
     {
-        return function (string $attribute, mixed $value, Closure $fail): void {
+        return fn (): Closure => function (string $attribute, mixed $value, Closure $fail): void {
             if ($value === null || $value === '') {
                 return;
             }
@@ -351,7 +352,7 @@ class ResourceQuotaResource extends Resource
 
     private static function idListRule(): Closure
     {
-        return function (string $attribute, mixed $value, Closure $fail): void {
+        return fn (): Closure => function (string $attribute, mixed $value, Closure $fail): void {
             if ($value === null || $value === '' || $value === []) {
                 return;
             }
