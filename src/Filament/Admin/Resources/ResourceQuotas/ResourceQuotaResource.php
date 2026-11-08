@@ -8,7 +8,6 @@ use App\Enums\CustomizationKey;
 use App\Filament\Admin\Resources\Users\Pages\EditUser;
 use App\Models\Egg;
 use App\Models\Node;
-use App\Models\Role;
 use App\Models\User;
 use Closure;
 use Filament\Actions\CreateAction;
@@ -34,6 +33,7 @@ use PelicanProvisioner\Domain\PositiveId;
 use PelicanProvisioner\Domain\QuotaAllowlist;
 use PelicanProvisioner\Domain\QuotaLimits;
 use PelicanProvisioner\Domain\ResourceAmounts;
+use PelicanProvisioner\Filament\Admin\AdminAudience;
 use PelicanProvisioner\Filament\Admin\Resources\ResourceQuotas\Pages\ManageResourceQuotas;
 use PelicanProvisioner\Models\ResourceQuota;
 use PelicanProvisioner\Services\UsageQuery;
@@ -100,24 +100,7 @@ class ResourceQuotaResource extends Resource
                     ->label(trans_choice('pelican-provisioner::strings.user', 1))
                     ->icon('tabler-user')
                     ->searchable(query: function (Builder $query, string $search): void {
-                        $search = trim($search);
-
-                        if ($search === '' || mb_strlen($search) > 255) {
-                            return;
-                        }
-
-                        $like = addcslashes($search, '\\%_').'%';
-                        $withEmail = self::canSeeEmails();
-
-                        $query->whereHas('user', function (Builder $user) use ($like, $withEmail): void {
-                            $user->where(function (Builder $nested) use ($like, $withEmail): void {
-                                $nested->where('username', 'like', $like);
-
-                                if ($withEmail) {
-                                    $nested->orWhere('email', 'like', $like);
-                                }
-                            });
-                        });
+                        AdminAudience::matchingUsers($query, $search);
                     })
                     ->url(fn (ResourceQuota $quota): ?string => $quota->user !== null && user()?->can('update', $quota->user)
                         ? EditUser::getUrl(['record' => $quota->user])
@@ -149,7 +132,8 @@ class ResourceQuotaResource extends Resource
                 ViewAction::make()
                     ->hidden(fn (ResourceQuota $record): bool => static::getEditAuthorizationResponse($record)->allowed()),
                 EditAction::make(),
-                DeleteAction::make(),
+                DeleteAction::make()
+                    ->modalDescription(trans('pelican-provisioner::strings.admin.delete_override')),
             ])
             ->toolbarActions([
                 CreateAction::make()->createAnother(false),
@@ -185,9 +169,7 @@ class ResourceQuotaResource extends Resource
                             ->getOptionLabelFromRecordUsing(fn (User $user): string => self::canSeeEmails() ? $user->username.' ('.$user->email.')' : (string) $user->username)
                             ->rules([
                                 fn (): Closure => function (string $attribute, mixed $value, Closure $fail): void {
-                                    $target = User::query()->find($value);
-
-                                    if (!$target instanceof User || !user()?->canTarget($target)) {
+                                    if (!AdminAudience::accepts($value)) {
                                         $fail(trans('pelican-provisioner::strings.admin.cannot_target'));
                                     }
                                 },
@@ -262,16 +244,12 @@ class ResourceQuotaResource extends Resource
     /** The rest of the panel does not let normal admins target root admins, so they cannot hand them a quota either. */
     public static function selectableUsers(Builder $query): Builder
     {
-        if (user()?->isRootAdmin()) {
-            return $query;
-        }
-
-        return $query->whereDoesntHave('roles', fn (Builder $roles): Builder => $roles->where('name', Role::ROOT_ADMIN));
+        return AdminAudience::selectableUsers($query);
     }
 
     public static function canSeeEmails(): bool
     {
-        return user()?->can('viewList user') ?? false;
+        return AdminAudience::canSeeEmails();
     }
 
     /** @return array<int, Select|Toggle> */
