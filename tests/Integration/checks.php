@@ -28,6 +28,8 @@ use Livewire\Livewire;
 use PelicanProvisioner\Domain\ProvisioningException;
 use PelicanProvisioner\Domain\QuotaResource;
 use PelicanProvisioner\Domain\QuotaViolationException;
+use PelicanProvisioner\Filament\Admin\Resources\QuotaBans\Pages\ManageQuotaBans;
+use PelicanProvisioner\Filament\Admin\Resources\QuotaBans\QuotaBanResource;
 use PelicanProvisioner\Filament\Admin\Resources\ResourceQuotas\Pages\ManageResourceQuotas;
 use PelicanProvisioner\Filament\Admin\Resources\ResourceQuotas\ResourceQuotaResource;
 use PelicanProvisioner\Filament\Admin\Resources\Users\RelationManagers\ResourceQuotaRelationManager;
@@ -323,6 +325,23 @@ check('an editor can change a normal quota', $qadmin->can('update', $aliceQuota)
 check('an editor cannot change a root admin quota', $qadmin->can('update', $rootQuota), false);
 check('an editor cannot delete a root admin quota', $qadmin->can('delete', $rootQuota), false);
 as_user('qadmin');
+$editor->givePermissionTo(
+    Permission::findOrCreate('create provisionerQuotaBan', 'web'),
+    Permission::findOrCreate('delete provisionerQuotaBan', 'web'),
+);
+app(PermissionRegistrar::class)->forgetCachedPermissions();
+$qadmin = User::query()->findOrFail($qadmin->id);
+$aliceBan = QuotaBan::query()->create(['user_id' => $alice->id]);
+$rootBan = QuotaBan::query()->create(['user_id' => $admin->id]);
+check('an editor can lift a normal ban', $qadmin->can('delete', $aliceBan), true);
+check('an editor cannot lift a root admin ban', $qadmin->can('delete', $rootBan), false);
+check('a root admin can ban anyone', $admin->can('create', QuotaBan::class), true);
+as_user('qadmin');
+check('an editor cannot pick a root admin to ban', QuotaBanResource::selectableUsers(User::query())->pluck('username')->contains('admin'), false);
+check('an editor can pick another user to ban', QuotaBanResource::selectableUsers(User::query())->pluck('username')->contains('alice'), true);
+$aliceBan->delete();
+$rootBan->delete();
+as_user('qadmin');
 check('an editor cannot pick a root admin', ResourceQuotaResource::selectableUsers(User::query())->pluck('username')->contains('admin'), false);
 check('an editor can pick other users', ResourceQuotaResource::selectableUsers(User::query())->pluck('username')->contains('alice'), true);
 check('an editor who cannot list users sees no emails', ResourceQuotaResource::canSeeEmails(), false);
@@ -495,6 +514,7 @@ check('server list with the quota widget and create button', outcome(fn () => Li
 as_user('admin');
 Filament::setCurrentPanel(Filament::getPanel('admin'));
 check('admin quota list', outcome(fn () => Livewire::actingAs($admin)->test(ManageResourceQuotas::class)->call('loadTable')), 'allowed');
+check('admin ban list', outcome(fn () => Livewire::actingAs($admin)->test(ManageQuotaBans::class)->call('loadTable')), 'allowed');
 check('quota section on the admin user page', outcome(fn () => Livewire::actingAs($admin)->test(ResourceQuotaRelationManager::class, ['ownerRecord' => $alice, 'pageClass' => EditUser::class])), 'allowed');
 
 section('Quota history for the owner');
