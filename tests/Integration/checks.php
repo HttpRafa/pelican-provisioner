@@ -396,7 +396,7 @@ outcome(fn () => resize($server, 20, 64, 64));
 $logs = glob('/var/www/html/storage/logs/*.log') ?: [];
 usort($logs, fn (string $left, string $right): int => filemtime($right) <=> filemtime($left));
 $lastLog = (string) file_get_contents($logs[0] ?? '/dev/null');
-check('a refused request reaches the panel log', str_contains($lastLog, 'pelican-provisioner.denied') && str_contains($lastLog, '"reason":"not_owner"'), true);
+check('a refused request reaches the panel log', str_contains($lastLog, 'Refused resize') && str_contains($lastLog, '"reason":"not_owner"'), true);
 
 section('Cache lock on databases other than MySQL');
 

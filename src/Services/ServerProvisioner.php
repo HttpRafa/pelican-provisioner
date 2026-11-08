@@ -37,6 +37,7 @@ use PelicanProvisioner\Domain\InvalidEnvironmentException;
 use PelicanProvisioner\Domain\InvalidResourceAmountException;
 use PelicanProvisioner\Domain\InvalidServerNameException;
 use PelicanProvisioner\Domain\PositiveId;
+use PelicanProvisioner\Domain\ProvisionerLog;
 use PelicanProvisioner\Domain\ProvisioningException;
 use PelicanProvisioner\Domain\ProvisioningFailure;
 use PelicanProvisioner\Domain\QuotaAllowlist;
@@ -182,7 +183,7 @@ final class ServerProvisioner
         try {
             app(DaemonServerRepository::class)->setServer($server)->sync();
         } catch (ConnectionException|RequestException $exception) {
-            Log::warning('pelican-provisioner.sync_failed', [
+            Log::warning(ProvisionerLog::syncFailed((string) $server->name, (string) $actor->username), [
                 'server_id' => $server->id,
                 'user_id' => $actor->id,
             ]);
@@ -288,7 +289,7 @@ final class ServerProvisioner
             throw new ProvisioningException(ProvisioningFailure::Quota);
         }
 
-        $egg = Egg::query()->whereKey($resolvedEggId)->first(['id']);
+        $egg = Egg::query()->whereKey($resolvedEggId)->first(['id', 'name']);
 
         if (!$egg instanceof Egg) {
             throw new ProvisioningException(ProvisioningFailure::EggNotAllowed);
@@ -381,10 +382,20 @@ final class ServerProvisioner
             'disk' => $requested->disk,
         ]);
 
-        Log::info('pelican-provisioner.created', [
+        Log::info(ProvisionerLog::created(
+            (string) $server->name,
+            (string) $actor->username,
+            (string) ($egg->name ?? ''),
+            $requested->cpu,
+            $requested->memory,
+            $requested->disk,
+        ), [
             'server_id' => $server->id,
             'user_id' => $actor->id,
             'egg_id' => $egg->id,
+            'cpu' => $requested->cpu,
+            'memory' => $requested->memory,
+            'disk' => $requested->disk,
         ]);
 
         return $server;
@@ -569,7 +580,7 @@ final class ServerProvisioner
 
     private function logDenied(User $actor, ?Server $server, string $action, string $reason): void
     {
-        Log::warning('pelican-provisioner.denied', [
+        Log::warning(ProvisionerLog::denied((string) $actor->username, $action, $reason, $server === null ? null : (string) $server->name), [
             'user_id' => $actor->id,
             'server_id' => $server?->id,
             'action' => $action,

@@ -17,10 +17,12 @@ use Illuminate\Contracts\Container\Container;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Translation\Translator;
 use PelicanProvisioner\Filament\Admin\Resources\Users\RelationManagers\ResourceQuotaRelationManager;
 use PelicanProvisioner\Filament\App\Widgets\QuotaOverview;
 use PelicanProvisioner\Filament\Components\Actions\CreateServerAction;
 use PelicanProvisioner\Models\ResourceQuota;
+use PelicanProvisioner\Observers\RecordQuotaHistory;
 use PelicanProvisioner\Policies\ResourceQuotaPolicy;
 use PelicanProvisioner\Services\NewUserQuota;
 use PelicanProvisioner\Services\QuotaAccess;
@@ -70,5 +72,37 @@ class PelicanProvisionerServiceProvider extends ServiceProvider
             'provisionerQuota',
             fn (User $user) => $user->hasOne(ResourceQuota::class, 'user_id'),
         );
+
+        ResourceQuota::observe(RecordQuotaHistory::class);
+        $this->registerQuotaHistoryTranslations();
+    }
+
+    private function registerQuotaHistoryTranslations(): void
+    {
+        $translator = $this->app->make('translator');
+
+        if (!$translator instanceof Translator) {
+            return;
+        }
+
+        foreach (['en', 'de'] as $locale) {
+            $path = dirname(__DIR__, 2)."/lang/{$locale}/activity.php";
+            $lines = is_file($path) ? require $path : null;
+
+            if (!is_array($lines)) {
+                continue;
+            }
+
+            $translator->load('*', 'activity', $locale);
+            $flat = [];
+
+            foreach ($lines as $key => $line) {
+                if (is_string($key) && is_string($line)) {
+                    $flat['activity.'.$key] = $line;
+                }
+            }
+
+            $translator->addLines($flat, $locale);
+        }
     }
 }
