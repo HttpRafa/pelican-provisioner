@@ -32,7 +32,7 @@ An empty port list uses any free allocation on a matching node. Creation fails i
 
 Create a quota for each user who should provision servers. Root administrators can do that immediately. Other roles need the Quota permissions. They cannot manage a root administrator's quota, and they only see email addresses if they can also list users.
 
-You can also save one default CPU, memory, disk, and server limit in the plugin settings. A user account created after that gets a quota from those values. Accounts that already exist are left alone. Leave the default empty and a new user still has no quota until you create one. An empty default is not unlimited.
+You can also save one default CPU, memory, disk, and server limit in the plugin settings. A user account created after that gets a quota from those values. Accounts that already exist are left alone. Leave the default empty and a new user still has no quota until you create one. An empty default is not unlimited. CPU, memory, and disk in the default must be above 0, because every new account gets it, including self-registered ones.
 
 The quota form has no defaults, so every limit is a choice.
 
@@ -46,18 +46,30 @@ Creating is limited to 10 attempts per user in 10 minutes. Resizing and deleting
 
 ## Local panel
 
-`docker/compose.yml` runs the panel on SQLite with Wings beside it, for local testing only. Wings receives the Docker socket, debug output is on, and both services listen on this machine only. From `docker/`:
+`docker/compose.yml` runs the panel on SQLite with Wings beside it, for local testing only. Wings receives the Docker socket, debug output is on, and every published port listens on this machine only. From `docker/`:
 
 ```bash
 ./bootstrap.sh
 ```
 
-The panel is at [http://127.0.0.1:8088](http://127.0.0.1:8088). The script seeds the panel, installs the plugin, and creates a node, one allowed egg, and two accounts. It prints their passwords when it finishes.
+The panel is at [http://127.0.0.1:8088](http://127.0.0.1:8088). The script seeds the panel, installs the plugin, and creates a node with ten ports, the Redis 7 egg, and two accounts. It prints new passwords each time and can be run again on an existing stack.
 
 | Account | Access |
 | --- | --- |
 | `admin@example.com` | Admin area, including Quotas |
 | `friend@example.com` | Server list with Create server |
+
+Server files are written to `docker/wings/` as your user. To open a server console in the browser, add `127.0.0.1 wings` to your hosts file. These variables change the defaults:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PANEL_PORT` | `8088` | Panel address on this machine |
+| `WINGS_PORT` | `18080` | Wings API and console |
+| `WINGS_SFTP_PORT` | `2022` | SFTP |
+| `WINGS_SUBNET` | `10.213.0.0/16` | Network for server containers. It must not overlap an existing Docker network. |
+| `EGG_URL` | Redis 7 | Egg the friend account can use |
+
+`./teardown.sh` from `docker/` removes the stack, including the server containers Wings started, which `docker compose down` does not know about. Server files stay in `docker/wings/volumes` until you delete them.
 
 The plugin directory is mounted into the container, so the panel can write its install state into `plugin.json`.
 

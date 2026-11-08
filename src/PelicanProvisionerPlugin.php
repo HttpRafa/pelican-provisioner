@@ -64,6 +64,14 @@ class PelicanProvisionerPlugin implements HasPluginSettings, Plugin
                 ->send();
         }
 
+        if ($settings->defaultQuotaInvalid) {
+            Notification::make()
+                ->title(trans('pelican-provisioner::strings.notifications.default_quota_invalid_stored'))
+                ->danger()
+                ->persistent()
+                ->send();
+        }
+
         return [
             'database_limit' => $sanitizer->natural($config['database_limit'] ?? null) ?? 0,
             'allocation_limit' => $sanitizer->natural($config['allocation_limit'] ?? null) ?? 0,
@@ -191,7 +199,7 @@ class PelicanProvisionerPlugin implements HasPluginSettings, Plugin
             ->label(trans('pelican-provisioner::strings.'.$label))
             ->helperText(trans($name === 'default_server_limit'
                 ? 'pelican-provisioner::strings.hint_server_limit'
-                : 'pelican-provisioner::strings.hint_unlimited'))
+                : 'pelican-provisioner::strings.settings.default_quota_finite'))
             ->rules([
                 fn (Get $get): Closure => function (string $attribute, mixed $value, Closure $fail) use ($get, $name): void {
                     $values = [

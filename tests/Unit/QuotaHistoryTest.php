@@ -73,3 +73,13 @@ it('shows that sentence to the quota owner and keeps the old server events', fun
         ->and($provisioner)->toContain("'server:provisioner.resources'")
         ->and($provisioner)->toContain("'server:provisioner.delete'");
 });
+
+it('describes an access change with its own event and fields', function () {
+    expect(QuotaHistory::ACCESS_EVENT)->toBe('user:provisioner.quota_access')
+        ->and(QuotaHistory::access('  <i>ada</i> ', 'Add to the global list (2)', 'Use the global rules'))->toBe([
+            'actor' => 'ada',
+            'eggs' => 'Add to the global list (2)',
+            'nodes' => 'Use the global rules',
+        ])
+        ->and(array_intersect(QuotaHistory::LIMIT_FIELDS, QuotaHistory::ACCESS_FIELDS))->toBe([]);
+});

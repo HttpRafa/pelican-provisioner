@@ -10,16 +10,20 @@ use App\Filament\App\Resources\Servers\Pages\ListServers;
 use App\Models\ActivityLog;
 use App\Models\Allocation;
 use App\Models\Egg;
+use App\Models\Node;
 use App\Models\Role;
 use App\Models\Server;
 use App\Models\Subuser;
 use App\Models\User;
+use App\Services\Users\UserCreationService;
 use Dotenv\Dotenv;
 use Filament\Facades\Filament;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 use PelicanProvisioner\Domain\ProvisioningException;
 use PelicanProvisioner\Domain\QuotaResource;
@@ -31,6 +35,7 @@ use PelicanProvisioner\Filament\App\Pages\CreateServerPage;
 use PelicanProvisioner\Filament\Server\Pages\ServerResourcePage;
 use PelicanProvisioner\Models\ResourceQuota;
 use PelicanProvisioner\PelicanProvisionerPlugin;
+use PelicanProvisioner\Services\QuotaAccess;
 use PelicanProvisioner\Services\UsageQuery;
 use PelicanProvisioner\Services\UserLock;
 use Spatie\Permission\Models\Permission;
@@ -92,6 +97,67 @@ reset_state(['allowed_eggs' => $usableEggs]);
 $server = create_server('i', $optionalEgg, rows: [['env_variable' => 'OPTIONAL_FLAG', 'variable_value' => null]]);
 check('a blank optional field is stored empty', stored_environment($server)['OPTIONAL_FLAG'], '');
 check('a blank required field is refused', outcome(fn () => create_server('j', $allowedEgg, rows: [['env_variable' => 'SERVER_JAR', 'variable_value' => null]])), 'invalid_variables');
+
+section('Creating: egg and node access per quota');
+
+$nodeIds = Node::query()->pluck('id', 'name');
+$publicNode = (int) $nodeIds['Public Tagged'];
+$privateNode = (int) $nodeIds['Private Tagged'];
+$untaggedNode = (int) $nodeIds['Public Untagged'];
+$access = function (array $columns) use ($alice): void {
+    ResourceQuota::query()->where('user_id', $alice->id)->update($columns);
+    as_user('alice');
+};
+$createOn = fn (string $name, int $eggId, ?int $node): string => outcome(fn () => provisioner()->create($name, $eggId, 10, 64, 64, [], $node));
+$placedOn = fn (string $name): ?string => Server::query()->where('name', $name)->first()?->node?->name;
+
+reset_state(['allowed_eggs' => (string) $allowedEgg]);
+$access(['egg_mode' => 'additive', 'allowed_egg_ids' => json_encode([$forbiddenEgg])]);
+check('add mode allows an egg the global list leaves out', $createOn('ea1', $forbiddenEgg, null), 'allowed');
+check('and keeps the globally allowed eggs', $createOn('ea2', $allowedEgg, null), 'allowed');
+
+reset_state(['allowed_eggs' => $usableEggs]);
+$access(['egg_mode' => 'negative', 'allowed_egg_ids' => json_encode([$allowedEgg])]);
+check('remove mode takes a globally allowed egg away', $createOn('en1', $allowedEgg, null), 'egg_not_allowed');
+check('and leaves the other allowed eggs', $createOn('en2', $optionalEgg, null), 'allowed');
+
+reset_state(['allowed_eggs' => (string) $allowedEgg]);
+$access(['egg_mode' => 'overwrite', 'allow_all_eggs' => true, 'allowed_egg_ids' => null]);
+check('replace mode can allow every egg', $createOn('eo1', $forbiddenEgg, null), 'allowed');
+$access(['allow_all_eggs' => false, 'allowed_egg_ids' => json_encode([$forbiddenEgg])]);
+check('replace mode with a list allows only that list', $createOn('eo2', $allowedEgg, null), 'egg_not_allowed');
+
+reset_state(['allowed_eggs' => (string) $allowedEgg]);
+check('without a node mode a submitted node is refused', $createOn('nn1', $allowedEgg, $publicNode), 'node_not_allowed');
+check('and the panel picks a tagged public node', [$createOn('nn2', $allowedEgg, null), $placedOn('nn2')], ['allowed', 'Public Tagged']);
+
+reset_state(['allowed_eggs' => (string) $allowedEgg]);
+$access(['node_mode' => 'additive', 'allowed_node_ids' => json_encode([$privateNode])]);
+check('add mode allows a private node', [$createOn('na1', $allowedEgg, $privateNode), $placedOn('na1')], ['allowed', 'Private Tagged']);
+check('a node mode requires a node to be chosen', $createOn('na2', $allowedEgg, null), 'node_not_allowed');
+check('a node outside the resolved list is refused', $createOn('na3', $allowedEgg, $untaggedNode), 'node_not_allowed');
+
+reset_state(['allowed_eggs' => (string) $allowedEgg]);
+$access(['node_mode' => 'negative', 'allowed_node_ids' => json_encode([$publicNode])]);
+check('remove mode takes a tagged node away', $createOn('nr1', $allowedEgg, $publicNode), 'node_not_allowed');
+
+reset_state(['allowed_eggs' => (string) $allowedEgg]);
+$access(['node_mode' => 'overwrite', 'allowed_node_ids' => json_encode([$untaggedNode])]);
+check('replace mode uses only its own nodes, tagged or not', [$createOn('no1', $allowedEgg, $untaggedNode), $placedOn('no1')], ['allowed', 'Public Untagged']);
+check('replace mode refuses the tagged node it left out', $createOn('no2', $allowedEgg, $publicNode), 'node_not_allowed');
+
+as_user('alice');
+Filament::setCurrentPanel(Filament::getPanel('app'));
+$page = Livewire::actingAs($alice)->test(CreateServerPage::class)
+    ->set('data.name', 'form-node')
+    ->set('data.egg_id', $allowedEgg)
+    ->set('data.cpu', 10)
+    ->set('data.memory', 64)
+    ->set('data.disk', 64)
+    ->set('data.node_id', $untaggedNode)
+    ->call('save');
+check('the create form places the server on the chosen node', $placedOn('form-node'), 'Public Untagged');
+$access(['node_mode' => null, 'allowed_node_ids' => null, 'egg_mode' => null, 'allowed_egg_ids' => null, 'allow_all_eggs' => false]);
 
 section('Creating: quota and rate limit');
 
@@ -215,6 +281,18 @@ node_answers(404);
 check('a 404 on delete means the node has nothing left', outcome(fn () => provisioner()->delete(Server::query()->findOrFail($server->id))), 'allowed');
 check('and removes the panel row', Server::query()->whereKey($server->id)->exists(), false);
 
+section('Create button');
+
+reset_state(['allowed_eggs' => $usableEggs]);
+check('a quota with an allowed egg can open the form', app(QuotaAccess::class)->canChooseAnEgg($alice->id), true);
+ResourceQuota::query()->where('user_id', $alice->id)->update(['egg_mode' => 'overwrite', 'allowed_egg_ids' => json_encode([])]);
+as_user('alice');
+check('a quota that allows no egg is not offered the form', app(QuotaAccess::class)->canChooseAnEgg($alice->id), false);
+ResourceQuota::query()->where('user_id', $alice->id)->update(['allowed_egg_ids' => json_encode([$forbiddenEgg])]);
+as_user('alice');
+check('a quota that adds its own egg is offered the form', app(QuotaAccess::class)->canChooseAnEgg($alice->id), true);
+ResourceQuota::query()->where('user_id', $alice->id)->update(['egg_mode' => null, 'allowed_egg_ids' => null]);
+
 section('Admin permissions');
 
 reset_state();
@@ -281,6 +359,30 @@ $original = app()->environmentFile();
 app()->loadEnvironmentFrom('.env.does-not-exist');
 check('a failed write is reported instead of thrown', outcome(fn () => $plugin->saveSettings($form)), 'allowed');
 app()->loadEnvironmentFrom($original);
+
+section('Default quota for new accounts');
+
+$default = ['default_cpu' => '150', 'default_memory' => '1024', 'default_disk' => '4096', 'default_server_limit' => '2'];
+$limits = fn (?ResourceQuota $quota): ?array => $quota ? [$quota->cpu, $quota->memory, $quota->disk, $quota->server_limit] : null;
+
+reset_state(['allowed_eggs' => $usableEggs] + $default);
+$newcomer = app(UserCreationService::class)->handle(['email' => 'newcomer@integration.test', 'username' => 'newcomer', 'password' => Str::random(32)]);
+check('a new account gets the saved default', $limits(ResourceQuota::query()->where('user_id', $newcomer->id)->first()), [150, 1024, 4096, 2]);
+as_user('newcomer');
+check('and can create a server with it', outcome(fn () => create_server('newcomer-server', $allowedEgg)), 'allowed');
+Artisan::call('p:user:make', ['--email' => 'cli@integration.test', '--username' => 'cliuser', '--password' => Str::random(32), '--admin' => 0]);
+$cliUser = User::query()->where('username', 'cliuser')->firstOrFail();
+check('an account made on the command line gets it too', $limits(ResourceQuota::query()->where('user_id', $cliUser->id)->first()), [150, 1024, 4096, 2]);
+check('an account that already existed is left alone', ResourceQuota::query()->where('user_id', $bob->id)->exists(), false);
+
+reset_state();
+$plain = app(UserCreationService::class)->handle(['email' => 'plain@integration.test', 'username' => 'plainuser', 'password' => Str::random(32)]);
+check('with no saved default a new account gets no quota', ResourceQuota::query()->where('user_id', $plain->id)->exists(), false);
+
+reset_state();
+foreach (['newcomer', 'cliuser', 'plainuser'] as $username) {
+    User::query()->where('username', $username)->first()?->delete();
+}
 
 section('Create form, used normally');
 
@@ -375,6 +477,24 @@ Filament::setCurrentPanel(Filament::getPanel('admin'));
 check('admin quota list', outcome(fn () => Livewire::actingAs($admin)->test(ManageResourceQuotas::class)->call('loadTable')), 'allowed');
 check('quota section on the admin user page', outcome(fn () => Livewire::actingAs($admin)->test(ResourceQuotaRelationManager::class, ['ownerRecord' => $alice, 'pageClass' => EditUser::class])), 'allowed');
 
+section('Quota history for the owner');
+
+reset_state();
+as_user('admin');
+$bobQuota = ResourceQuota::query()->create(['user_id' => $bob->id, 'cpu' => 100, 'memory' => 1024, 'disk' => 2048, 'server_limit' => 1]);
+$bobQuota->forceFill(['cpu' => 150])->save();
+$entries = User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota')->orderBy('id')->get();
+check('the owner sees an entry for the new and the changed quota', $entries->count(), 2);
+check('the change names the admin as actor', [$entries->last()?->actor_id, $entries->last()?->properties?->get('actor')], [$admin->id, 'admin']);
+check('with the old and new CPU', [(int) $entries->last()?->properties?->get('old_cpu'), (int) $entries->last()?->properties?->get('new_cpu')], [100, 150]);
+check('and a translated sentence', str_contains((string) $entries->last()?->getLabel(), 'changed the quota from'), true);
+$bobQuota->delete();
+check('deleting the quota adds an entry too', User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota')->count(), 3);
+auth()->forgetUser();
+ResourceQuota::query()->create(['user_id' => $bob->id, 'cpu' => 1, 'memory' => 1, 'disk' => 1, 'server_limit' => 1])->delete();
+check('a change without a signed-in user is credited to the system', User::query()->findOrFail($bob->id)->activity()->where('event', 'user:provisioner.quota')->latest('id')->first()?->properties?->get('actor'), 'system');
+reset_state();
+
 section('Audit trail');
 
 reset_state(['allowed_eggs' => $usableEggs, 'can_users_delete_servers' => 'true']);
@@ -397,6 +517,27 @@ $logs = glob('/var/www/html/storage/logs/*.log') ?: [];
 usort($logs, fn (string $left, string $right): int => filemtime($right) <=> filemtime($left));
 $lastLog = (string) file_get_contents($logs[0] ?? '/dev/null');
 check('a refused request reaches the panel log', str_contains($lastLog, 'Refused resize') && str_contains($lastLog, '"reason":"not_owner"'), true);
+
+section('Quota history only for real changes');
+
+reset_state();
+$adminUser = User::query()->where('username', 'admin')->firstOrFail();
+as_user('admin');
+$history = fn (string $event): int => ActivityLog::query()->where('event', $event)->count();
+$limitsBefore = $history('user:provisioner.quota');
+$accessBefore = $history('user:provisioner.quota_access');
+$aliceQuota = ResourceQuota::query()->where('user_id', $alice->id)->firstOrFail();
+$aliceQuota->touch();
+check('a save that changes nothing writes no entry', [$history('user:provisioner.quota') - $limitsBefore, $history('user:provisioner.quota_access') - $accessBefore], [0, 0]);
+$aliceQuota->forceFill(['egg_mode' => 'additive', 'allowed_egg_ids' => [$forbiddenEgg]])->save();
+check('an access change writes an access entry and no limits entry', [$history('user:provisioner.quota') - $limitsBefore, $history('user:provisioner.quota_access') - $accessBefore], [0, 1]);
+$accessEntry = ActivityLog::query()->where('event', 'user:provisioner.quota_access')->latest('id')->first();
+check('the access entry names the actor and the new egg rule', [$accessEntry?->properties?->get('actor'), $accessEntry?->properties?->get('eggs')], ['admin', 'Add to the global list (1)']);
+check('and its label is translated', str_contains((string) $accessEntry?->getLabel(), 'changed which eggs and nodes'), true);
+$aliceQuota->forceFill(['cpu' => 300])->save();
+check('a limits change writes only a limits entry', [$history('user:provisioner.quota') - $limitsBefore, $history('user:provisioner.quota_access') - $accessBefore], [1, 1]);
+reset_state();
+ResourceQuota::query()->where('user_id', $alice->id)->update(['egg_mode' => null, 'allowed_egg_ids' => null]);
 
 section('Cache lock on databases other than MySQL');
 

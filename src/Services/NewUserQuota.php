@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PelicanProvisioner\Services;
 
+use Illuminate\Support\Facades\Log;
 use PelicanProvisioner\Domain\DefaultQuota;
 use PelicanProvisioner\Domain\InvalidResourceAmountException;
 use PelicanProvisioner\Domain\Quota;
@@ -29,6 +30,8 @@ final class NewUserQuota
         try {
             $quota = DefaultQuota::parse($config);
         } catch (InvalidResourceAmountException) {
+            Log::warning('The saved default quota is invalid, so the new account got no quota.', ['user_id' => $userId]);
+
             return;
         }
 

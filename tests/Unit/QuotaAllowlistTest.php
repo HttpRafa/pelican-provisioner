@@ -63,11 +63,11 @@ it('replaces the global rules with the quota selection', function () {
         ->and($allowlist->placement(null, $oneNode, AccessMode::Overwrite)->rejected)->toBeTrue();
 });
 
-it('treats a node list with gaps as empty, so callers reindex after filtering', function () {
+it('reads node lists by their values, so a filtered list keeps its nodes', function () {
     $allowlist = new QuotaAllowlist();
 
-    expect($allowlist->nodes([1], AccessMode::Overwrite, [0 => 4, 2 => 8]))->toBe([])
-        ->and($allowlist->nodes([0 => 1, 2 => 2], AccessMode::Negative, []))->toBe([]);
+    expect($allowlist->nodes([1], AccessMode::Overwrite, [0 => 4, 2 => 8]))->toBe([4, 8])
+        ->and($allowlist->nodes([0 => 1, 2 => 2], AccessMode::Negative, []))->toBe([1, 2]);
 });
 
 it('is applied when a server is created, not only in the form', function () {
@@ -83,4 +83,15 @@ it('is applied when a server is created, not only in the form', function () {
         ->and($page)->toContain('->map(fn (Node $node): int => (int) $node->id)')
         ->and($page)->toContain('->values()')
         ->and($provisioner)->toContain('->values()');
+});
+
+it('reads a stored list whose keys have gaps, so a remove list still removes', function () {
+    $allowlist = new QuotaAllowlist();
+    $gapped = [1 => 5, 3 => 7];
+
+    expect(QuotaAllowlist::ids($gapped))->toBe([5, 7])
+        ->and(QuotaAllowlist::ids('{"1":5,"3":7}'))->toBe([5, 7])
+        ->and($allowlist->eggs(false, [4, 5, 7], 'negative', $gapped)->ids)->toBe([4])
+        ->and($allowlist->eggs(true, [], 'negative', $gapped)->excludedIds)->toBe([5, 7])
+        ->and($allowlist->nodes([1, 5, 7], 'negative', $gapped))->toBe([1]);
 });
