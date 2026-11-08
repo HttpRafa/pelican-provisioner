@@ -32,6 +32,7 @@ use PelicanProvisioner\Filament\App\Pages\CreateServerPage;
 use PelicanProvisioner\Filament\Server\Pages\ServerResourcePage;
 use PelicanProvisioner\Models\ResourceQuota;
 use PelicanProvisioner\PelicanProvisionerPlugin;
+use PelicanProvisioner\Services\QuotaAccess;
 use PelicanProvisioner\Services\UsageQuery;
 use PelicanProvisioner\Services\UserLock;
 use Spatie\Permission\Models\Permission;
@@ -276,6 +277,18 @@ check('and that size is stored', Server::query()->findOrFail($server->id)->cpu, 
 node_answers(404);
 check('a 404 on delete means the node has nothing left', outcome(fn () => provisioner()->delete(Server::query()->findOrFail($server->id))), 'allowed');
 check('and removes the panel row', Server::query()->whereKey($server->id)->exists(), false);
+
+section('Create button');
+
+reset_state(['allowed_eggs' => $usableEggs]);
+check('a quota with an allowed egg can open the form', app(QuotaAccess::class)->canChooseAnEgg($alice->id), true);
+ResourceQuota::query()->where('user_id', $alice->id)->update(['egg_mode' => 'overwrite', 'allowed_egg_ids' => json_encode([])]);
+as_user('alice');
+check('a quota that allows no egg is not offered the form', app(QuotaAccess::class)->canChooseAnEgg($alice->id), false);
+ResourceQuota::query()->where('user_id', $alice->id)->update(['allowed_egg_ids' => json_encode([$forbiddenEgg])]);
+as_user('alice');
+check('a quota that adds its own egg is offered the form', app(QuotaAccess::class)->canChooseAnEgg($alice->id), true);
+ResourceQuota::query()->where('user_id', $alice->id)->update(['egg_mode' => null, 'allowed_egg_ids' => null]);
 
 section('Admin permissions');
 
