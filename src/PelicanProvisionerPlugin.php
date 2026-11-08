@@ -9,6 +9,7 @@ use App\Enums\PluginStatus;
 use App\Models\Egg;
 use App\Models\Plugin as PluginModel;
 use App\Traits\EnvironmentWriterTrait;
+use Closure;
 use Filament\Contracts\Plugin;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TagsInput;
@@ -17,6 +18,9 @@ use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
 use Filament\Panel;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
+use PelicanProvisioner\Domain\DefaultQuota;
+use PelicanProvisioner\Domain\InvalidResourceAmountException;
 use PelicanProvisioner\Domain\InvalidSettingsException;
 use PelicanProvisioner\Domain\SettingsSanitizer;
 use Throwable;
@@ -71,6 +75,10 @@ class PelicanProvisionerPlugin implements HasPluginSettings, Plugin
             'deployment_ports' => $sanitizer->displayList($config['deployment_ports'] ?? ''),
             'allow_all_eggs' => $settings->allowAllEggs,
             'allowed_eggs' => $settings->allowedEggIds,
+            'default_cpu' => $settings->defaultQuota?->cpu,
+            'default_memory' => $settings->defaultQuota?->memory,
+            'default_disk' => $settings->defaultQuota?->disk,
+            'default_server_limit' => $settings->defaultQuota?->serverLimit,
         ];
     }
 
@@ -87,6 +95,15 @@ class PelicanProvisionerPlugin implements HasPluginSettings, Plugin
                     $this->limitField('backup_limit', 'settings.backup_limit'),
                     $this->limitField('subdomain_limit', 'settings.subdomain_limit')
                         ->visible(fn (): bool => $this->hasSubdomainsPlugin()),
+                ]),
+            Section::make(trans('pelican-provisioner::strings.settings.default_quota'))
+                ->description(trans('pelican-provisioner::strings.settings.default_quota_help'))
+                ->columns(4)
+                ->schema([
+                    $this->defaultQuotaField('default_cpu', 'cpu', '%'),
+                    $this->defaultQuotaField('default_memory', 'memory', config('panel.use_binary_prefix') ? 'MiB' : 'MB'),
+                    $this->defaultQuotaField('default_disk', 'disk', config('panel.use_binary_prefix') ? 'MiB' : 'MB'),
+                    $this->defaultQuotaField('default_server_limit', 'server_limit'),
                 ]),
             Section::make(trans('pelican-provisioner::strings.settings.permissions'))
                 ->columns()
@@ -166,6 +183,38 @@ class PelicanProvisionerPlugin implements HasPluginSettings, Plugin
             ->title(trans('pelican-provisioner::strings.notifications.settings_saved'))
             ->success()
             ->send();
+    }
+
+    private function defaultQuotaField(string $name, string $label, ?string $suffix = null): TextInput
+    {
+        $field = TextInput::make($name)
+            ->label(trans('pelican-provisioner::strings.'.$label))
+            ->helperText(trans($name === 'default_server_limit'
+                ? 'pelican-provisioner::strings.hint_server_limit'
+                : 'pelican-provisioner::strings.hint_unlimited'))
+            ->rules([
+                fn (Get $get): Closure => function (string $attribute, mixed $value, Closure $fail) use ($get, $name): void {
+                    $values = [
+                        'default_cpu' => $get('default_cpu'),
+                        'default_memory' => $get('default_memory'),
+                        'default_disk' => $get('default_disk'),
+                        'default_server_limit' => $get('default_server_limit'),
+                    ];
+                    $values[$name] = $value;
+
+                    try {
+                        DefaultQuota::parse($values);
+                    } catch (InvalidResourceAmountException) {
+                        $fail(trans('pelican-provisioner::strings.settings.default_quota_incomplete'));
+                    }
+                },
+            ]);
+
+        if ($suffix !== null) {
+            $field->suffix($suffix);
+        }
+
+        return $field;
     }
 
     private function limitField(string $name, string $label): TextInput

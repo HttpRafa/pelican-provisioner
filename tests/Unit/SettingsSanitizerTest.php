@@ -104,6 +104,40 @@ it('lets an empty egg list repair a corrupt one, because it allows nothing', fun
         ->and($environment['PROVISIONER_ALLOW_ALL_EGGS'])->toBe('false');
 });
 
+it('leaves creation on when no default quota is saved', function () {
+    $settings = sanitizer()->fromConfig(storedSettings());
+
+    expect($settings->createUsable)->toBeTrue()
+        ->and($settings->defaultQuota)->toBeNull();
+});
+
+it('turns creation off when the default quota is corrupt', function () {
+    $settings = sanitizer()->fromConfig(storedSettings() + [
+        'default_cpu' => '100',
+        'default_memory' => '',
+        'default_disk' => '1',
+        'default_server_limit' => '1',
+    ]);
+
+    expect($settings->createUsable)->toBeFalse()
+        ->and($settings->defaultQuota)->toBeNull()
+        ->and(fn () => sanitizer()->toEnvironment([
+            'database_limit' => '0',
+            'allocation_limit' => '0',
+            'backup_limit' => '0',
+            'can_users_update_servers' => true,
+            'can_users_delete_servers' => false,
+            'allow_all_eggs' => false,
+            'deployment_tags' => ['nodes'],
+            'deployment_ports' => [],
+            'allowed_eggs' => [],
+            'default_cpu' => '-1',
+            'default_memory' => '1',
+            'default_disk' => '1',
+            'default_server_limit' => '1',
+        ], false, storedSettings()))->toThrow(InvalidSettingsException::class);
+});
+
 it('turns creation off when a stored setting is missing or corrupt', function (string $key, mixed $value) {
     expect(sanitizer()->fromConfig([$key => $value] + storedSettings())->createUsable)->toBeFalse();
 })->with([

@@ -83,6 +83,7 @@ class ResourceQuotaRelationManager extends RelationManager
                 ->integer()
                 ->minValue(0)
                 ->maxValue(ResourceAmounts::ABSOLUTE_MAX)
+                ->rules([ResourceQuotaResource::amountRule()])
                 ->suffix('%'),
             TextInput::make('memory')
                 ->label(trans('pelican-provisioner::strings.memory'))
@@ -91,6 +92,7 @@ class ResourceQuotaRelationManager extends RelationManager
                 ->integer()
                 ->minValue(0)
                 ->maxValue(ResourceAmounts::ABSOLUTE_MAX)
+                ->rules([ResourceQuotaResource::amountRule()])
                 ->suffix(config('panel.use_binary_prefix') ? 'MiB' : 'MB'),
             TextInput::make('disk')
                 ->label(trans('pelican-provisioner::strings.disk'))
@@ -99,6 +101,7 @@ class ResourceQuotaRelationManager extends RelationManager
                 ->integer()
                 ->minValue(0)
                 ->maxValue(ResourceAmounts::ABSOLUTE_MAX)
+                ->rules([ResourceQuotaResource::amountRule()])
                 ->suffix(config('panel.use_binary_prefix') ? 'MiB' : 'MB'),
             TextInput::make('server_limit')
                 ->label(trans('pelican-provisioner::strings.server_limit'))
@@ -106,7 +109,8 @@ class ResourceQuotaRelationManager extends RelationManager
                 ->required()
                 ->integer()
                 ->minValue(0)
-                ->maxValue(ResourceAmounts::ABSOLUTE_MAX),
+                ->maxValue(ResourceAmounts::ABSOLUTE_MAX)
+                ->rules([ResourceQuotaResource::amountRule()]),
         ]);
     }
 }

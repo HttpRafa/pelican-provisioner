@@ -40,6 +40,7 @@ final class SettingsSanitizer
         $tags = $this->tags($input['deployment_tags'] ?? []);
         $ports = $this->ports($input['deployment_ports'] ?? []);
         $eggs = $this->eggs($input['allowed_eggs'] ?? []);
+        $defaultQuota = $this->defaultQuota($input);
 
         if ($database === null) {
             $errors['database_limit'] = 'invalid';
@@ -85,6 +86,10 @@ final class SettingsSanitizer
             $errors['allowed_eggs'] = 'invalid';
         }
 
+        if ($defaultQuota === false) {
+            $errors['default_cpu'] = 'invalid';
+        }
+
         if (
             $errors !== []
             || $database === null
@@ -97,6 +102,7 @@ final class SettingsSanitizer
             || $tags === null
             || $ports === null
             || $eggs === null
+            || $defaultQuota === false
         ) {
             throw new InvalidSettingsException($errors);
         }
@@ -112,6 +118,10 @@ final class SettingsSanitizer
             'PROVISIONER_DEPLOYMENT_PORTS' => implode(',', $ports),
             'PROVISIONER_ALLOWED_EGGS' => implode(',', $eggs),
             'PROVISIONER_ALLOW_ALL_EGGS' => $allowAll ? 'true' : 'false',
+            'PROVISIONER_DEFAULT_CPU' => $defaultQuota instanceof Quota ? (string) $defaultQuota->cpu : '',
+            'PROVISIONER_DEFAULT_MEMORY' => $defaultQuota instanceof Quota ? (string) $defaultQuota->memory : '',
+            'PROVISIONER_DEFAULT_DISK' => $defaultQuota instanceof Quota ? (string) $defaultQuota->disk : '',
+            'PROVISIONER_DEFAULT_SERVER_LIMIT' => $defaultQuota instanceof Quota && is_int($defaultQuota->serverLimit) ? (string) $defaultQuota->serverLimit : '',
         ];
     }
 
@@ -128,6 +138,7 @@ final class SettingsSanitizer
         $tags = $this->tags($config['deployment_tags'] ?? null);
         $ports = $this->ports($config['deployment_ports'] ?? null);
         $eggs = $this->eggs($config['allowed_eggs'] ?? null);
+        $defaultQuota = $this->defaultQuota($config);
 
         $usable = $database !== null
             && $allocation !== null
@@ -138,7 +149,8 @@ final class SettingsSanitizer
             && $allowAll !== null
             && $tags !== null
             && $ports !== null
-            && $eggs !== null;
+            && $eggs !== null
+            && $defaultQuota !== false;
 
         return new DeploymentSettings(
             createUsable: $usable,
@@ -152,7 +164,22 @@ final class SettingsSanitizer
             ports: $ports ?? [],
             allowedEggIds: $eggs ?? [],
             allowAllEggs: $allowAll ?? false,
+            defaultQuota: $defaultQuota instanceof Quota ? $defaultQuota : null,
         );
+    }
+
+    /**
+     * False means the stored default is corrupt. Null means no default is saved.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    private function defaultQuota(array $config): Quota|false|null
+    {
+        try {
+            return DefaultQuota::parse($config);
+        } catch (InvalidResourceAmountException) {
+            return false;
+        }
     }
 
     /** @return list<string> */

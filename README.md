@@ -30,6 +30,8 @@ An empty port list uses any free allocation on a matching node. Creation fails i
 
 Create a quota for each user who should provision servers. Root administrators can do that immediately. Other roles need the Quota permissions. They cannot manage a root administrator's quota, and they only see email addresses if they can also list users.
 
+You can also save one default CPU, memory, disk, and server limit in the plugin settings. A user account created after that gets a quota from those values. Accounts that already exist are left alone. Leave the default empty and a new user still has no quota until you create one. An empty default is not unlimited.
+
 The quota form has no defaults, so every limit is a choice.
 
 - `0` on CPU, memory, or disk means that resource is unlimited. A server created with `0` does not count against the node's capacity. A finite quota cannot create an unlimited server.
