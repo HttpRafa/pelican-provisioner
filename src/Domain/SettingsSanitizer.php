@@ -118,10 +118,10 @@ final class SettingsSanitizer
             'PROVISIONER_DEPLOYMENT_PORTS' => implode(',', $ports),
             'PROVISIONER_ALLOWED_EGGS' => implode(',', $eggs),
             'PROVISIONER_ALLOW_ALL_EGGS' => $allowAll ? 'true' : 'false',
-            'PROVISIONER_DEFAULT_CPU' => $defaultQuota instanceof Quota ? (string) $defaultQuota->cpu : '',
-            'PROVISIONER_DEFAULT_MEMORY' => $defaultQuota instanceof Quota ? (string) $defaultQuota->memory : '',
-            'PROVISIONER_DEFAULT_DISK' => $defaultQuota instanceof Quota ? (string) $defaultQuota->disk : '',
-            'PROVISIONER_DEFAULT_SERVER_LIMIT' => $defaultQuota instanceof Quota && is_int($defaultQuota->serverLimit) ? (string) $defaultQuota->serverLimit : '',
+            'PROVISIONER_GRANT_CPU' => $defaultQuota instanceof Quota ? (string) $defaultQuota->cpu : '',
+            'PROVISIONER_GRANT_MEMORY' => $defaultQuota instanceof Quota ? (string) $defaultQuota->memory : '',
+            'PROVISIONER_GRANT_DISK' => $defaultQuota instanceof Quota ? (string) $defaultQuota->disk : '',
+            'PROVISIONER_GRANT_SERVER_LIMIT' => $defaultQuota instanceof Quota && is_int($defaultQuota->serverLimit) ? (string) $defaultQuota->serverLimit : '',
         ];
     }
 

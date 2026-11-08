@@ -201,3 +201,29 @@ it('fails closed when a port range would be ignored or too large', function () {
         ->and(sanitizer()->validPort('2000-1000'))->toBeFalse()
         ->and(sanitizer()->validPort('0'))->toBeFalse();
 });
+
+it('stores the default under names 0.3.0 never wrote, so an upgrade does not open self-service', function () {
+    $environment = sanitizer()->toEnvironment([
+        'database_limit' => 0,
+        'allocation_limit' => 0,
+        'backup_limit' => 0,
+        'can_users_update_servers' => true,
+        'can_users_delete_servers' => false,
+        'allow_all_eggs' => false,
+        'default_cpu' => 50,
+        'default_memory' => 512,
+        'default_disk' => 1024,
+        'default_server_limit' => 1,
+    ], false, storedSettings());
+    $config = (string) file_get_contents(dirname(__DIR__, 2).'/config/pelican-provisioner.php');
+
+    expect($environment)->toMatchArray([
+        'PROVISIONER_GRANT_CPU' => '50',
+        'PROVISIONER_GRANT_MEMORY' => '512',
+        'PROVISIONER_GRANT_DISK' => '1024',
+        'PROVISIONER_GRANT_SERVER_LIMIT' => '1',
+    ])
+        ->and(array_keys($environment))->not->toContain('PROVISIONER_DEFAULT_CPU')
+        ->and($config)->toContain("env('PROVISIONER_GRANT_CPU'")
+        ->and($config)->not->toContain("env('PROVISIONER_DEFAULT_");
+});
