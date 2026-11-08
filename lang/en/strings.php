@@ -93,7 +93,8 @@ return [
         'eggs_help' => 'Users can only create servers with these eggs. Nobody can create a server while this list is empty, unless every egg is allowed. Keep eggs with privileged install scripts off the list unless you mean to allow them.',
         'default_quota' => 'Default quota for new users',
         'default_quota_help' => 'Applied to each user account created after you save it. Accounts that already exist are left alone. Leave all four empty to give new users no quota. Empty is not unlimited.',
-        'default_quota_incomplete' => 'Enter all four limits, or leave all four empty. 0 is a real limit and means unlimited for CPU, memory, and disk.',
+        'default_quota_incomplete' => 'Enter all four limits, or leave all four empty. CPU, memory, and disk must be above 0.',
+        'default_quota_finite' => 'Must be above 0. Every new account, including self-registered ones, gets this amount, so the default cannot be unlimited.',
     ],
     'admin' => [
         'empty' => 'No quotas yet. Add one and that user can create servers from the server list.',

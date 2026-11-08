@@ -17,15 +17,22 @@ it('does not turn a missing default into an unlimited quota', function () {
         ]))->toBeNull();
 });
 
-it('keeps an explicit zero default, which means unlimited', function () {
+it('refuses an unlimited default for CPU, memory, or disk', function (string $field) {
+    $values = ['default_cpu' => '100', 'default_memory' => '1024', 'default_disk' => '2048', 'default_server_limit' => '1'];
+    $values[$field] = '0';
+
+    expect(fn () => DefaultQuota::parse($values))->toThrow(InvalidResourceAmountException::class);
+})->with(['default_cpu', 'default_memory', 'default_disk']);
+
+it('allows a default with no cap on the number of servers', function () {
     $quota = DefaultQuota::parse([
-        'default_cpu' => '0',
-        'default_memory' => 0,
-        'default_disk' => '0',
+        'default_cpu' => '100',
+        'default_memory' => 1024,
+        'default_disk' => '2048',
         'default_server_limit' => '0',
     ]);
 
-    expect($quota)->toEqual(new Quota(0, 0, 0, 0))
+    expect($quota)->toEqual(new Quota(100, 1024, 2048, 0))
         ->and($quota?->serverCap())->toBeNull();
 });
 
