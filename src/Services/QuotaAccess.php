@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PelicanProvisioner\Services;
 
 use App\Models\Egg;
+use Illuminate\Database\Eloquent\Builder;
 use PelicanProvisioner\Domain\AccessDecision;
 use PelicanProvisioner\Domain\Grant;
 use PelicanProvisioner\Domain\GrantResolver;
@@ -34,8 +35,8 @@ final class QuotaAccess
         }
 
         $decision = GrantResolver::decide(
-            $this->isBanned($userId, $lock),
-            $this->override($userId, $lock),
+            $this->isBanned($userId, $lock, $fresh),
+            $this->override($userId, $lock, $fresh),
             $this->settings->current()->defaultQuota,
         );
 
@@ -102,26 +103,20 @@ final class QuotaAccess
         return $choice->ids !== [] && Egg::query()->whereIn('id', $choice->ids)->exists();
     }
 
-    private function isBanned(int $userId, bool $lock): bool
+    private function isBanned(int $userId, bool $lock, bool $fresh): bool
     {
         $query = QuotaBan::query()->where('user_id', $userId)->select(['id']);
-
-        if ($lock) {
-            $query->lockForUpdate();
-        }
+        $this->readConsistently($query, $lock, $fresh);
 
         return $query->first() !== null;
     }
 
-    private function override(int $userId, bool $lock): ?Grant
+    private function override(int $userId, bool $lock, bool $fresh): ?Grant
     {
         $query = ResourceQuota::query()
             ->where('user_id', $userId)
             ->select(['id', 'user_id', 'cpu', 'memory', 'disk', 'server_limit', 'egg_mode', 'node_mode', 'allow_all_eggs', 'allowed_egg_ids', 'allowed_node_ids']);
-
-        if ($lock) {
-            $query->lockForUpdate();
-        }
+        $this->readConsistently($query, $lock, $fresh);
 
         $quota = $query->first();
 
@@ -137,5 +132,17 @@ final class QuotaAccess
             $quota->node_mode,
             $quota->allowed_node_ids,
         );
+    }
+
+    /** Provisioning has to see a ban or override that was just saved, including when a replica is behind. */
+    private function readConsistently(Builder $query, bool $lock, bool $fresh): void
+    {
+        if ($lock || $fresh) {
+            $query->useWritePdo();
+        }
+
+        if ($lock) {
+            $query->lockForUpdate();
+        }
     }
 }
