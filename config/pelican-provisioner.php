@@ -1,6 +1,7 @@
 <?php
 
 // Stored as raw strings. Casting env('false') with (bool) is true in PHP, which would turn the delete switch on.
+// The default uses GRANT names because 0.3.0 gave PROVISIONER_DEFAULT_* only to new accounts. Uninstalling keeps the environment file, so reading those names would open self-service to every user on upgrade.
 
 return [
     'database_limit' => env('PROVISIONER_DATABASE_LIMIT', '0'),
@@ -13,8 +14,8 @@ return [
     'deployment_ports' => env('PROVISIONER_DEPLOYMENT_PORTS', ''),
     'allowed_eggs' => env('PROVISIONER_ALLOWED_EGGS', ''),
     'allow_all_eggs' => env('PROVISIONER_ALLOW_ALL_EGGS', 'false'),
-    'default_cpu' => env('PROVISIONER_DEFAULT_CPU', ''),
-    'default_memory' => env('PROVISIONER_DEFAULT_MEMORY', ''),
-    'default_disk' => env('PROVISIONER_DEFAULT_DISK', ''),
-    'default_server_limit' => env('PROVISIONER_DEFAULT_SERVER_LIMIT', ''),
+    'default_cpu' => env('PROVISIONER_GRANT_CPU', ''),
+    'default_memory' => env('PROVISIONER_GRANT_MEMORY', ''),
+    'default_disk' => env('PROVISIONER_GRANT_DISK', ''),
+    'default_server_limit' => env('PROVISIONER_GRANT_SERVER_LIMIT', ''),
 ];

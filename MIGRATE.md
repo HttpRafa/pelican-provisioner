@@ -1,6 +1,6 @@
 # Migrate from user-creatable-servers
 
-Upgrading this plugin from 0.3.0 is an uninstall, then an install of the new zip. Uninstall drops `provisioner_quotas` and `provisioner_quota_bans`. The new install creates both empty. Rows from 0.3.0 are not imported. Enter overrides and bans again after install.
+Upgrading this plugin from 0.3.0 is an uninstall, then an install of the new zip. Uninstall drops `provisioner_quotas` and `provisioner_quota_bans`. The new install creates both empty. Rows from 0.3.0 are not imported. Enter overrides and bans again after install. The default from 0.3.0 is not read, because it only applied to new accounts and now applies to every user without an override. Save a default in the plugin settings when you want that. Other plugin settings stay in the environment file and keep working.
 
 The steps below copy quotas from the official user-creatable-servers plugin onto a fresh install. Those copied rows are overrides. Users without a copied row use the saved default.
 
