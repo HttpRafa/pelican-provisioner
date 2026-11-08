@@ -135,7 +135,17 @@ function reset_state(array $settings = []): void
     config()->set('pelican-provisioner', [...$GLOBALS['defaultSettings'], ...$settings]);
 
     $alice = User::query()->where('username', 'alice')->firstOrFail();
-    ResourceQuota::query()->updateOrCreate(['user_id' => $alice->id], ['cpu' => 200, 'memory' => 2048, 'disk' => 10240, 'server_limit' => 3]);
+    ResourceQuota::query()->updateOrCreate(['user_id' => $alice->id], [
+        'cpu' => 200,
+        'memory' => 2048,
+        'disk' => 10240,
+        'server_limit' => 3,
+        'egg_mode' => null,
+        'node_mode' => null,
+        'allow_all_eggs' => false,
+        'allowed_egg_ids' => null,
+        'allowed_node_ids' => null,
+    ]);
 
     as_user('alice');
 }
