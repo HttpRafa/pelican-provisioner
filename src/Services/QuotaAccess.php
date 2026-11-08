@@ -24,7 +24,7 @@ final class QuotaAccess
         if (!array_key_exists($userId, $this->quotas)) {
             $this->quotas[$userId] = ResourceQuota::query()
                 ->where('user_id', $userId)
-                ->first(['id', 'user_id', 'cpu', 'memory', 'disk', 'server_limit']);
+                ->first(['id', 'user_id', 'cpu', 'memory', 'disk', 'server_limit', 'egg_mode', 'node_mode', 'allow_all_eggs', 'allowed_egg_ids', 'allowed_node_ids']);
         }
 
         return $this->quotas[$userId];

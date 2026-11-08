@@ -8,7 +8,9 @@ use App\Filament\Components\Forms\Fields\StartupVariable;
 use App\Filament\Server\Pages\Console;
 use App\Models\Egg;
 use App\Models\EggVariable;
+use App\Models\Node;
 use App\Models\User;
+use App\Services\Deployment\FindViableNodesService;
 use App\Services\Servers\RandomWordService;
 use BackedEnum;
 use Filament\Forms\Components\Hidden;
@@ -28,9 +30,13 @@ use Filament\Schemas\Schema;
 use Filament\Support\Facades\FilamentView;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\HtmlString;
+use PelicanProvisioner\Domain\AccessMode;
+use PelicanProvisioner\Domain\InvalidResourceAmountException;
 use PelicanProvisioner\Domain\PositiveId;
 use PelicanProvisioner\Domain\ProvisioningException;
+use PelicanProvisioner\Domain\QuotaAllowlist;
 use PelicanProvisioner\Domain\QuotaPolicy;
+use PelicanProvisioner\Domain\ResourceAmountParser;
 use PelicanProvisioner\Domain\ResourceAmounts;
 use PelicanProvisioner\Filament\App\Widgets\QuotaOverview;
 use PelicanProvisioner\Models\ResourceQuota;
@@ -156,6 +162,14 @@ class CreateServerPage extends Page
                             $this->resourceField('cpu', 'cpu', '%'),
                             $this->resourceField('memory', 'memory', $this->memorySuffix()),
                             $this->resourceField('disk', 'disk', $this->memorySuffix()),
+                            Select::make('node_id')
+                                ->label(trans('pelican-provisioner::strings.node'))
+                                ->prefixIcon('tabler-server-2')
+                                ->options(fn (Get $get): array => $this->nodeOptions($get('cpu'), $get('memory'), $get('disk')))
+                                ->visible(fn (): bool => $this->restrictsNodes())
+                                ->required(fn (): bool => $this->restrictsNodes())
+                                ->searchable()
+                                ->columnSpanFull(),
                         ]),
                     Step::make('startup')
                         ->label(trans('pelican-provisioner::strings.steps.startup'))
@@ -215,6 +229,7 @@ class CreateServerPage extends Page
                 memory: $data['memory'] ?? null,
                 disk: $data['disk'] ?? null,
                 variables: $data['variables'] ?? [],
+                nodeId: $data['node_id'] ?? null,
             );
 
             $url = Console::getUrl(panel: 'server', tenant: $server);
@@ -250,6 +265,7 @@ class CreateServerPage extends Page
             ->minValue(fn (): int => $this->bounds($name)['min'])
             ->maxValue(fn (): int => $this->bounds($name)['max'])
             ->suffix($suffix)
+            ->live(onBlur: true)
             ->hint(fn ($state): string => $this->hint($name, $state));
     }
 
@@ -318,8 +334,16 @@ class CreateServerPage extends Page
         }
 
         $settings = app(SettingsRepository::class)->current();
+        $quota = $this->quota();
+        $choice = (new QuotaAllowlist())->eggs(
+            $settings->allowAllEggs,
+            $settings->allowedEggIds,
+            $quota?->egg_mode,
+            $quota?->allowed_egg_ids,
+            (bool) $quota?->allow_all_eggs,
+        );
 
-        if (!$settings->createUsable || (!$settings->allowAllEggs && $settings->allowedEggIds === [])) {
+        if (!$settings->createUsable || (!$choice->allowAll && $choice->ids === [])) {
             $this->eggOptionCache = [];
 
             return;
@@ -327,8 +351,12 @@ class CreateServerPage extends Page
 
         $query = Egg::query()->orderBy('name');
 
-        if (!$settings->allowAllEggs) {
-            $query->whereIn('id', $settings->allowedEggIds);
+        if ($choice->allowAll && $choice->excludedIds !== []) {
+            $query->whereNotIn('id', $choice->excludedIds);
+        }
+
+        if (!$choice->allowAll) {
+            $query->whereIn('id', $choice->ids);
         }
 
         $eggs = $query->get(['id', 'name', 'description']);
@@ -377,6 +405,61 @@ class CreateServerPage extends Page
             ->get(['id', 'egg_id', 'name', 'description', 'env_variable', 'default_value', 'user_viewable', 'user_editable', 'rules', 'sort'])
             ->keyBy('env_variable')
             ->all();
+    }
+
+    /** @return array<int, string> */
+    private function nodeOptions(mixed $cpu, mixed $memory, mixed $disk): array
+    {
+        $quota = $this->quota();
+        $settings = app(SettingsRepository::class)->current();
+
+        if (!$quota instanceof ResourceQuota || !$settings->createUsable || !$this->restrictsNodes()) {
+            return [];
+        }
+
+        try {
+            $requested = new ResourceAmounts(
+                ResourceAmountParser::parse($cpu),
+                ResourceAmountParser::parse($memory),
+                ResourceAmountParser::parse($disk),
+            );
+        } catch (InvalidResourceAmountException) {
+            return [];
+        }
+
+        $tagged = app(FindViableNodesService::class)->handle(
+            $requested->memory,
+            $requested->disk,
+            $requested->cpu,
+            $settings->tags,
+        )->pluck('id')->map(fn (mixed $id): int => (int) $id)->values()->all();
+        $selected = QuotaAllowlist::ids($quota->allowed_node_ids);
+        $mode = AccessMode::parse($quota->node_mode);
+
+        if (($mode === AccessMode::Additive || $mode === AccessMode::Overwrite) && $selected !== []) {
+            $selected = Node::query()
+                ->whereIn('id', $selected)
+                ->get()
+                ->filter(fn (Node $node): bool => $node->isViable($requested->memory, $requested->disk, $requested->cpu))
+                ->map(fn (Node $node): int => (int) $node->id)
+                ->values()
+                ->all();
+        }
+
+        $allowed = (new QuotaAllowlist())->nodes($tagged, $quota->node_mode, $selected);
+
+        if ($allowed === []) {
+            return [];
+        }
+
+        return Node::query()->whereIn('id', $allowed)->orderBy('name')->pluck('name', 'id')->all();
+    }
+
+    private function restrictsNodes(): bool
+    {
+        $quota = $this->quota();
+
+        return $quota instanceof ResourceQuota && AccessMode::parse($quota->node_mode) !== null;
     }
 
     private function quota(): ?ResourceQuota

@@ -6,6 +6,8 @@ namespace PelicanProvisioner\Filament\Admin\Resources\ResourceQuotas;
 
 use App\Enums\CustomizationKey;
 use App\Filament\Admin\Resources\Users\Pages\EditUser;
+use App\Models\Egg;
+use App\Models\Node;
 use App\Models\Role;
 use App\Models\User;
 use Closure;
@@ -15,16 +17,21 @@ use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Enums\PaginationMode;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
+use PelicanProvisioner\Domain\AccessMode;
 use PelicanProvisioner\Domain\InvalidResourceAmountException;
+use PelicanProvisioner\Domain\PositiveId;
+use PelicanProvisioner\Domain\QuotaAllowlist;
 use PelicanProvisioner\Domain\QuotaLimits;
 use PelicanProvisioner\Domain\ResourceAmounts;
 use PelicanProvisioner\Filament\Admin\Resources\ResourceQuotas\Pages\ManageResourceQuotas;
@@ -80,7 +87,7 @@ class ResourceQuotaResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->select(['id', 'user_id', 'cpu', 'memory', 'disk', 'server_limit', 'created_at', 'updated_at'])
+            ->select(['id', 'user_id', 'cpu', 'memory', 'disk', 'server_limit', 'egg_mode', 'node_mode', 'allow_all_eggs', 'allowed_egg_ids', 'allowed_node_ids', 'created_at', 'updated_at'])
             ->with(['user:id,username,email'])
             ->withCount('ownedServers as servers_used');
     }
@@ -200,6 +207,7 @@ class ResourceQuotaResource extends Resource
                             ->minValue(0)
                             ->maxValue(ResourceAmounts::ABSOLUTE_MAX)
                             ->rules([self::amountRule()]),
+                        ...self::allowlistFields(),
                         TextEntry::make('current_usage')
                             ->label(trans('pelican-provisioner::strings.admin.usage_heading'))
                             ->visible(fn (?ResourceQuota $record): bool => $record !== null)
@@ -266,6 +274,79 @@ class ResourceQuotaResource extends Resource
         return user()?->can('viewList user') ?? false;
     }
 
+    /** @return array<int, Select|Toggle> */
+    public static function allowlistFields(): array
+    {
+        return [
+            self::modeField('egg_mode', 'admin.egg_mode', 'admin.egg_mode_help'),
+            Select::make('allowed_egg_ids')
+                ->label(trans('pelican-provisioner::strings.admin.eggs'))
+                ->helperText(trans('pelican-provisioner::strings.admin.eggs_help'))
+                ->options(fn (): array => self::eggOptions())
+                ->multiple()
+                ->searchable()
+                ->preload(false)
+                ->visible(fn (Get $get): bool => self::showsSelection($get('egg_mode'), (bool) $get('allow_all_eggs')))
+                ->rules([self::idListRule()])
+                ->dehydrateStateUsing(fn (mixed $state, Get $get): ?array => self::selectionForStorage($state, $get('egg_mode'), (bool) $get('allow_all_eggs')))
+                ->columnSpanFull(),
+            Toggle::make('allow_all_eggs')
+                ->label(trans('pelican-provisioner::strings.admin.all_eggs'))
+                ->helperText(trans('pelican-provisioner::strings.admin.all_eggs_help'))
+                ->inline(false)
+                ->live()
+                ->visible(fn (Get $get): bool => AccessMode::parse($get('egg_mode')) === AccessMode::Overwrite)
+                ->dehydrateStateUsing(fn (mixed $state, Get $get): bool => AccessMode::parse($get('egg_mode')) === AccessMode::Overwrite && (bool) $state)
+                ->columnSpanFull(),
+            self::modeField('node_mode', 'admin.node_mode', 'admin.node_mode_help'),
+            Select::make('allowed_node_ids')
+                ->label(trans('pelican-provisioner::strings.admin.nodes'))
+                ->helperText(trans('pelican-provisioner::strings.admin.nodes_help'))
+                ->options(fn (): array => self::nodeOptions())
+                ->multiple()
+                ->searchable()
+                ->preload(false)
+                ->visible(fn (Get $get): bool => AccessMode::parse($get('node_mode')) !== null)
+                ->rules([self::idListRule()])
+                ->dehydrateStateUsing(fn (mixed $state, Get $get): ?array => self::selectionForStorage($state, $get('node_mode'), false))
+                ->columnSpanFull(),
+        ];
+    }
+
+    private static function modeField(string $name, string $label, string $help): Select
+    {
+        return Select::make($name)
+            ->label(trans('pelican-provisioner::strings.'.$label))
+            ->helperText(trans('pelican-provisioner::strings.'.$help))
+            ->options([
+                AccessMode::Additive->value => trans('pelican-provisioner::strings.admin.mode_additive'),
+                AccessMode::Negative->value => trans('pelican-provisioner::strings.admin.mode_negative'),
+                AccessMode::Overwrite->value => trans('pelican-provisioner::strings.admin.mode_overwrite'),
+            ])
+            ->placeholder(trans('pelican-provisioner::strings.admin.mode_inherit'))
+            ->nullable()
+            ->live()
+            ->rules([self::modeRule()])
+            ->dehydrateStateUsing(fn (mixed $state): ?string => AccessMode::parse($state)?->value)
+            ->columnSpanFull();
+    }
+
+    private static function showsSelection(mixed $mode, bool $allowAllEggs): bool
+    {
+        $parsed = AccessMode::parse($mode);
+
+        return $parsed !== null && !($parsed === AccessMode::Overwrite && $allowAllEggs);
+    }
+
+    private static function selectionForStorage(mixed $state, mixed $mode, bool $allowAllEggs): ?array
+    {
+        if (!self::showsSelection($mode, $allowAllEggs)) {
+            return null;
+        }
+
+        return QuotaAllowlist::ids($state);
+    }
+
     public static function amountRule(): Closure
     {
         return function (string $attribute, mixed $value, Closure $fail): void {
@@ -275,6 +356,54 @@ class ResourceQuotaResource extends Resource
                 $fail(trans('pelican-provisioner::strings.admin.invalid_quota'));
             }
         };
+    }
+
+    private static function modeRule(): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail): void {
+            if ($value === null || $value === '') {
+                return;
+            }
+
+            if (AccessMode::parse($value) === null) {
+                $fail(trans('pelican-provisioner::strings.admin.invalid_mode'));
+            }
+        };
+    }
+
+    private static function idListRule(): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail): void {
+            if ($value === null || $value === '' || $value === []) {
+                return;
+            }
+
+            if (!is_array($value)) {
+                $fail(trans('pelican-provisioner::strings.admin.invalid_allowlist'));
+
+                return;
+            }
+
+            foreach ($value as $item) {
+                if (PositiveId::parse($item) === null) {
+                    $fail(trans('pelican-provisioner::strings.admin.invalid_allowlist'));
+
+                    return;
+                }
+            }
+        };
+    }
+
+    /** @return array<int|string, string> */
+    private static function eggOptions(): array
+    {
+        return Egg::query()->orderBy('name')->pluck('name', 'id')->all();
+    }
+
+    /** @return array<int|string, string> */
+    private static function nodeOptions(): array
+    {
+        return Node::query()->orderBy('name')->pluck('name', 'id')->all();
     }
 
     private static function quotaField(string $name, string $suffix): TextInput

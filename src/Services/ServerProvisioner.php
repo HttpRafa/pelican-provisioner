@@ -28,6 +28,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
+use PelicanProvisioner\Domain\AccessMode;
 use PelicanProvisioner\Domain\DeploymentSettings;
 use PelicanProvisioner\Domain\EggAllowlist;
 use PelicanProvisioner\Domain\EggVariableDefinition;
@@ -38,6 +39,7 @@ use PelicanProvisioner\Domain\InvalidServerNameException;
 use PelicanProvisioner\Domain\PositiveId;
 use PelicanProvisioner\Domain\ProvisioningException;
 use PelicanProvisioner\Domain\ProvisioningFailure;
+use PelicanProvisioner\Domain\QuotaAllowlist;
 use PelicanProvisioner\Domain\QuotaPolicy;
 use PelicanProvisioner\Domain\QuotaViolationException;
 use PelicanProvisioner\Domain\ResourceAmountParser;
@@ -75,10 +77,11 @@ final class ServerProvisioner
         private readonly QuotaPolicy $policy,
         private readonly EnvironmentBuilder $environment,
         private readonly EggAllowlist $eggs,
+        private readonly QuotaAllowlist $allowlist,
     ) {}
 
     /** @param mixed $variables Repeater rows from the create form. */
-    public function create(mixed $name, mixed $eggId, mixed $cpu, mixed $memory, mixed $disk, mixed $variables): Server
+    public function create(mixed $name, mixed $eggId, mixed $cpu, mixed $memory, mixed $disk, mixed $variables, mixed $nodeId = null): Server
     {
         $actor = $this->actor();
 
@@ -93,6 +96,7 @@ final class ServerProvisioner
                 $memory,
                 $disk,
                 $variables,
+                $nodeId,
             ));
         } catch (ProvisioningException|HttpException $exception) {
             throw $exception;
@@ -238,7 +242,7 @@ final class ServerProvisioner
         $this->audit($server, 'server:provisioner.delete', $properties);
     }
 
-    private function createWhileLocked(User $actor, mixed $name, mixed $eggId, mixed $cpu, mixed $memory, mixed $disk, mixed $variables): Server
+    private function createWhileLocked(User $actor, mixed $name, mixed $eggId, mixed $cpu, mixed $memory, mixed $disk, mixed $variables, mixed $nodeId): Server
     {
         $settings = $this->settings->current();
 
@@ -256,19 +260,26 @@ final class ServerProvisioner
         }
 
         $resolvedEggId = PositiveId::parse($eggId);
-
-        if ($resolvedEggId === null || !$this->eggs->permits($resolvedEggId, $settings->allowedEggIds, $settings->allowAllEggs)) {
-            $this->logDenied($actor, null, 'create', 'egg_not_allowed');
-
-            throw new ProvisioningException(ProvisioningFailure::EggNotAllowed);
-        }
-
         $quota = $this->readQuota((int) $actor->id);
 
         if (!$quota instanceof ResourceQuota) {
             $this->logDenied($actor, null, 'create', 'no_quota');
 
             throw new ProvisioningException(ProvisioningFailure::Forbidden);
+        }
+
+        $eggChoice = $this->allowlist->eggs(
+            $settings->allowAllEggs,
+            $settings->allowedEggIds,
+            $quota->egg_mode,
+            $quota->allowed_egg_ids,
+            (bool) $quota->allow_all_eggs,
+        );
+
+        if ($resolvedEggId === null || !$this->eggs->permits($resolvedEggId, $eggChoice->ids, $eggChoice->allowAll, $eggChoice->excludedIds)) {
+            $this->logDenied($actor, null, 'create', 'egg_not_allowed');
+
+            throw new ProvisioningException(ProvisioningFailure::EggNotAllowed);
         }
 
         try {
@@ -308,7 +319,7 @@ final class ServerProvisioner
             throw new ProvisioningException(ProvisioningFailure::Variables, $detail);
         }
 
-        $allocation = $this->chooseAllocation($requested, $settings);
+        $allocation = $this->chooseAllocation($actor, $requested, $settings, $quota, $nodeId);
 
         try {
             $server = $this->creation->handle([
@@ -379,21 +390,38 @@ final class ServerProvisioner
         return $server;
     }
 
-    private function chooseAllocation(ResourceAmounts $requested, DeploymentSettings $settings): Allocation
+    private function chooseAllocation(User $actor, ResourceAmounts $requested, DeploymentSettings $settings, ResourceQuota $quota, mixed $submittedNode): Allocation
     {
-        $nodeIds = $this->nodes
+        $tagged = $this->nodes
             ->handle($requested->memory, $requested->disk, $requested->cpu, $settings->tags)
             ->pluck('id')
+            ->map(fn (mixed $id): int => (int) $id)
+            ->values()
             ->all();
+        $selected = QuotaAllowlist::ids($quota->allowed_node_ids);
+        $mode = AccessMode::parse($quota->node_mode);
 
-        if ($nodeIds === []) {
+        if ($mode === AccessMode::Additive || $mode === AccessMode::Overwrite) {
+            $selected = $this->viableNodeIds($selected, $requested);
+        }
+
+        $resolved = $this->allowlist->nodes($tagged, $quota->node_mode, $selected);
+        $placement = $this->allowlist->placement($submittedNode, $resolved, $quota->node_mode);
+
+        if ($placement->rejected) {
+            $this->logDenied($actor, null, 'create', 'node_not_allowed');
+
+            throw new ProvisioningException(ProvisioningFailure::NodeNotAllowed);
+        }
+
+        if ($placement->nodeIds === []) {
             throw new ProvisioningException(ProvisioningFailure::NoNode);
         }
 
         try {
             return $this->allocations
                 ->setDedicated(false)
-                ->setNodes($nodeIds)
+                ->setNodes($placement->nodeIds)
                 ->setPorts($settings->ports)
                 ->handle();
         } catch (NoViableAllocationException) {
@@ -414,6 +442,24 @@ final class ServerProvisioner
         if ($server instanceof Server) {
             $this->deletion->withForce()->handle($server);
         }
+    }
+
+    /** @param list<int> $ids */
+    private function viableNodeIds(array $ids, ResourceAmounts $requested): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $kept = [];
+
+        foreach (Node::query()->whereIn('id', $ids)->get() as $node) {
+            if ($node instanceof Node && $node->isViable($requested->memory, $requested->disk, $requested->cpu)) {
+                $kept[] = (int) $node->id;
+            }
+        }
+
+        return $kept;
     }
 
     private function assertNodeHasRoom(Server $server, ResourceAmounts $growth): void
@@ -469,7 +515,7 @@ final class ServerProvisioner
         return ResourceQuota::query()
             ->where('user_id', $userId)
             ->useWritePdo()
-            ->first(['id', 'user_id', 'cpu', 'memory', 'disk', 'server_limit']);
+            ->first(['id', 'user_id', 'cpu', 'memory', 'disk', 'server_limit', 'egg_mode', 'node_mode', 'allow_all_eggs', 'allowed_egg_ids', 'allowed_node_ids']);
     }
 
     private function quotaForUpdate(User $actor, Server $server): ResourceQuota

@@ -20,6 +20,11 @@ use Throwable;
  * @property int $memory
  * @property int $disk
  * @property int|null $server_limit
+ * @property string|null $egg_mode
+ * @property string|null $node_mode
+ * @property bool $allow_all_eggs
+ * @property array<int, mixed>|null $allowed_egg_ids
+ * @property array<int, mixed>|null $allowed_node_ids
  * @property User|null $user
  */
 class ResourceQuota extends Model
@@ -34,6 +39,11 @@ class ResourceQuota extends Model
         'memory',
         'disk',
         'server_limit',
+        'egg_mode',
+        'node_mode',
+        'allow_all_eggs',
+        'allowed_egg_ids',
+        'allowed_node_ids',
     ];
 
     protected static function booted(): void
@@ -80,6 +90,9 @@ class ResourceQuota extends Model
             'memory' => 'integer',
             'disk' => 'integer',
             'server_limit' => 'integer',
+            'allow_all_eggs' => 'boolean',
+            'allowed_egg_ids' => 'array',
+            'allowed_node_ids' => 'array',
         ];
     }
 }

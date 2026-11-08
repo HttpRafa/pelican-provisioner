@@ -26,6 +26,8 @@ Tag public nodes that should receive these servers with `user_creatable_servers`
 
 No egg can be used until it is selected under Allowed eggs. An empty list means nobody can create a server. Allow every egg is a separate switch: it includes eggs added later, and anyone who runs a server can read that egg's hidden variables from inside it. Leave eggs with privileged install scripts off the list unless that is intentional.
 
+A quota can change those eggs and nodes for one user. Leave the mode unset to keep the global rule. Add includes eggs or nodes the global rule does not. Remove takes eggs or nodes away from that user only. Replace ignores the global rule and uses only the list on the quota, and an empty replace list allows none. Replace can also allow every egg, including eggs added later.
+
 An empty port list uses any free allocation on a matching node. Creation fails if none is free.
 
 Create a quota for each user who should provision servers. Root administrators can do that immediately. Other roles need the Quota permissions. They cannot manage a root administrator's quota, and they only see email addresses if they can also list users.
