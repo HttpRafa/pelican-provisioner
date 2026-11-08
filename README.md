@@ -10,7 +10,7 @@ Moving quotas from the official user-creatable-servers plugin, or from 0.3.0 of 
 
 Import the zip from the [releases page](https://github.com/HttpRafa/pelican-provisioner/releases), or copy this directory to `plugins/pelican-provisioner`. Then install it from the plugin list or with `php artisan p:plugin:install`.
 
-The panel finds new releases through the update manifest on that page. Uninstall before installing a newer zip. Uninstall drops every override and ban, and the new install starts empty.
+The panel finds new releases through the update manifest on that page and offers them in the plugin list. An update keeps overrides, bans, and settings. Uninstalling drops every override and ban. Moving from 0.3.0 to 0.4.0 is covered in [MIGRATE.md](MIGRATE.md).
 
 ## Configure
 

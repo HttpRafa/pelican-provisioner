@@ -37,6 +37,6 @@ $manifest = $directory.'/update.json';
 $notes = $directory.'/release-notes.md';
 
 file_put_contents($manifest, json_encode(UpdateManifest::document($version, $sha256), JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n");
-file_put_contents($notes, "Uninstall Pelican Provisioner before installing this zip. Uninstall drops the quota and ban tables. The new install starts empty.\n");
+file_put_contents($notes, UpdateManifest::releaseNotes($version));
 
 echo $manifest."\n";

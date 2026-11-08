@@ -25,6 +25,16 @@ final class UpdateManifest
         ];
     }
 
+    /** Only 0.4.0 replaced the tables. Telling later releases to uninstall would cost every administrator their overrides and bans. */
+    public static function releaseNotes(string $version): string
+    {
+        if ($version === '0.4.0') {
+            return "Uninstall Pelican Provisioner before installing this zip. Uninstall drops the quota and ban tables. The new install starts empty.\n";
+        }
+
+        return "Update from the plugin list. Overrides, bans, and settings are kept.\n";
+    }
+
     public static function updateUrl(): string
     {
         return self::REPOSITORY.'/releases/latest/download/update.json';
