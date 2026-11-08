@@ -35,10 +35,16 @@ jobs:
       - name: 🔎 Check the tag matches plugin.json
         run: test "$GITHUB_REF_NAME" = "v$(jq -r .version plugin.json)"
 
+      - name: 📦 Install dependencies
+        run: composer install --no-interaction --no-dev --prefer-dist
+
       - name: 📦 Build the plugin archive
         run: php scripts/build-zip.php
 
+      - name: 📝 Write the update manifest
+        run: php scripts/write-update-json.php
+
       - name: 🚀 Publish the release
-        run: gh release create "$GITHUB_REF_NAME" dist/*.zip --generate-notes --verify-tag
+        run: gh release create "$GITHUB_REF_NAME" dist/*.zip dist/update.json --verify-tag --notes-file dist/release-notes.md
         env:
           GH_TOKEN: ${{ github.token }}
