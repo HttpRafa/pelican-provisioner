@@ -14,22 +14,26 @@ it('records who changed a quota and the old and new limits', function () {
     expect(QuotaHistory::EVENT)->toBe('user:provisioner.quota')
         ->and($created['actor'])->toBe('ada')
         ->and($created['old_cpu'])->toBe('—')
-        ->and($created['new_cpu'])->toBe('0')
+        ->and($created['new_cpu'])->toBe('unlimited')
         ->and($created['new_memory'])->toBe('2048')
         ->and($created['new_servers'])->toBe('2')
-        ->and($updated['old_cpu'])->toBe('100')
-        ->and($updated['new_cpu'])->toBe('200')
+        ->and($updated['old_cpu'])->toBe('100%')
+        ->and($updated['new_cpu'])->toBe('200%')
         ->and($updated['old_servers'])->toBe('1')
-        ->and($updated['new_servers'])->toBe('0')
+        ->and($updated['new_servers'])->toBe('unlimited')
         ->and($deleted['new_disk'])->toBe('—')
         ->and($deleted['old_disk'])->toBe('2048');
 });
 
-it('keeps a zero limit distinct from a quota that did not exist', function () {
-    $properties = QuotaHistory::properties('ada', new Quota(0, 0, 0, 0), new Quota(0, 0, 0, null));
+it('writes unlimited limits as unlimited, distinct from a quota that did not exist', function () {
+    $properties = QuotaHistory::properties('ada', new Quota(0, 0, 0, 0), new Quota(0, 0, 0, null), 'unbegrenzt');
+    $created = QuotaHistory::properties('ada', null, new Quota(0, 0, 0, null));
 
-    expect($properties['old_cpu'])->toBe('0')
-        ->and($properties['new_servers'])->toBe('—')
+    expect($properties['old_cpu'])->toBe('unbegrenzt')
+        ->and($properties['old_servers'])->toBe('unbegrenzt')
+        ->and($properties['new_servers'])->toBe('unbegrenzt')
+        ->and($created['old_servers'])->toBe('—')
+        ->and($created['new_servers'])->toBe('unlimited')
         ->and(QuotaHistory::properties('  <b>ada</b>  ', null, null)['actor'])->toBe('ada');
 });
 

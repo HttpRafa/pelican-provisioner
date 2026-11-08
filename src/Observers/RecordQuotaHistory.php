@@ -45,7 +45,9 @@ class RecordQuotaHistory
 
     private function writeLimits(ResourceQuota $quota, ?Quota $before, ?Quota $after): void
     {
-        $this->write($quota, QuotaHistory::EVENT, fn (?string $actor): array => QuotaHistory::properties($actor, $before, $after));
+        $unlimited = trans('pelican-provisioner::strings.history_unlimited');
+
+        $this->write($quota, QuotaHistory::EVENT, fn (?string $actor): array => QuotaHistory::properties($actor, $before, $after, $unlimited));
     }
 
     private function writeAccess(ResourceQuota $quota): void
